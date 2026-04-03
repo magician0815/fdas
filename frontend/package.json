@@ -1,0 +1,28 @@
+{
+  "name": "fdas-frontend",
+  "version": "1.0.0",
+  "description": "金融数据抓取与分析系统 - 前端",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.0",
+    "pinia": "^2.1.0",
+    "element-plus": "^2.5.0",
+    "echarts": "^5.5.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.2.0",
+    "@vue/test-utils": "^2.4.0",
+    "@vitest/coverage-v8": "^1.2.0"
+  }
+}

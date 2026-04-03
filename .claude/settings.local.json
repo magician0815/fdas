@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'MCP数量: {len\\(d.get\\(\\\\\"mcpServers\\\\\", {}\\)\\)}'\\); [print\\(f'  - {k}'\\) for k in d.get\\('mcpServers', {}\\).keys\\(\\)]\")",
+      "Bash(python3:*)",
+      "Bash(/opt/local/bin/node --version)",
+      "Bash(bash:*)",
+      "Bash(ls:*)",
+      "Bash(sort -t. -k1,1n -k2,2n -k3,3n -k4,4n)",
+      "Bash(/opt/local/bin/node ~/.claude/plugins/cache/claude-hud/claude-hud/0.0.11/dist/index.js)",
+      "Bash(pip3 install:*)",
+      "Bash(gh auth:*)",
+      "Bash(git init:*)",
+      "Bash(git branch:*)",
+      "Bash(gh repo:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

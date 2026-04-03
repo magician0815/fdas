@@ -1,0 +1,48 @@
+# FDAS Docker Compose - 测试环境配置
+# 金融数据抓取与分析系统
+
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  fdas-db:
+    image: postgres:16
+    container_name: fdas-db
+    environment:
+      POSTGRES_USER: fdas
+      POSTGRES_PASSWORD: fdas
+      POSTGRES_DB: fdas
+    ports:
+      - "5432:5432"
+    volumes:
+      - fdas-db-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fdas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # 后端服务（包含前端静态文件）
+  fdas-app:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: fdas-app
+    environment:
+      DATABASE_URL: postgresql+asyncpg://fdas:fdas@fdas-db:5432/fdas
+      SESSION_SECRET: ${SESSION_SECRET:-change-this-in-production}
+      DEBUG: ${DEBUG:-false}
+    ports:
+      - "8000:8000"
+    depends_on:
+      fdas-db:
+        condition: service_healthy
+    volumes:
+      - ../backend/logs:/app/logs
+    restart: unless-stopped
+
+volumes:
+  fdas-db-data:
+    driver: local
