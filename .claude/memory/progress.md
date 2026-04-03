@@ -5,9 +5,9 @@
 ## 当前状态
 
 **阶段**: 第一阶段 - 技术框架搭建与核心功能实现
-**当前模块**: 密码服务(bcrypt)
+**当前模块**: Session管理
 **状态**: pending
-**进度**: 46% (16/35)
+**进度**: 49% (17/35)
 **开始时间**: 2026-04-03
 **最后更新**: 2026-04-03
 
@@ -40,20 +40,23 @@
 
 ## 下一步任务
 
-**下一个模块**: 密码服务(bcrypt)（用户认证层 #16）
+**下一个模块**: Session管理（用户认证层 #17）
+
+**开发方式**: TDD
 
 **任务详情**:
 ```
-实现密码加密与验证：
-- 安装bcrypt依赖
-- 创建密码hash函数
-- 创建密码验证函数
+使用TDD开发Session管理：
+- 创建Session服务
+- 实现Session创建/查询/删除
+- 编写测试用例
 ```
 
 **产出文件**:
-- `backend/app/services/auth_service.py`
+- `backend/app/services/session_service.py`
+- `backend/tests/test_session_service.py`
 
-**验收标准**: 密码加密/验证成功
+**验收标准**: 测试通过，Session CRUD成功
 
 ---
 
