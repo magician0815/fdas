@@ -71,9 +71,12 @@ async def health_check():
     return {"status": "healthy", "version": "1.0.0"}
 
 
-# TODO: 注册API路由
-# from app.api.v1 import auth, users, fx_data, datasource, collection, system
-# app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
+# 注册API路由
+from app.api.v1 import auth
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
+
+# TODO: 注册更多API路由
+# from app.api.v1 import users, fx_data, datasource, collection, system
 # app.include_router(users.router, prefix="/api/v1/users", tags=["用户管理"])
 # app.include_router(fx_data.router, prefix="/api/v1/fx", tags=["汇率数据"])
 # app.include_router(datasource.router, prefix="/api/v1/datasource", tags=["数据源管理"])
