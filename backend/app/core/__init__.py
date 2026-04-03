@@ -8,10 +8,22 @@ Created: 2026-04-03
 """
 
 from app.core.database import Base, engine, AsyncSessionLocal, get_db
+from app.core.exceptions import (
+    AppException,
+    NotFoundException,
+    UnauthorizedException,
+    ForbiddenException,
+    BadRequestException,
+)
 
 __all__ = [
     "Base",
     "engine",
     "AsyncSessionLocal",
     "get_db",
+    "AppException",
+    "NotFoundException",
+    "UnauthorizedException",
+    "ForbiddenException",
+    "BadRequestException",
 ]

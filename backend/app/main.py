@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.settings import settings
 from app.config.logging import setup_logging
+from app.core.exceptions import register_exception_handlers
 
 # 初始化日志
 setup_logging()
@@ -22,6 +23,9 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
+
+# 注册异常处理器
+register_exception_handlers(app)
 
 # CORS中间件配置
 app.add_middleware(
