@@ -7,6 +7,8 @@ Author: FDAS Team
 Created: 2026-04-03
 """
 
+from __future__ import annotations
+
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timedelta

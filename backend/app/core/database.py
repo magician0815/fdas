@@ -7,8 +7,8 @@ Author: FDAS Team
 Created: 2026-04-03
 """
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config.settings import settings
 
 # 创建异步引擎
@@ -22,20 +22,15 @@ engine = create_async_engine(
 )
 
 # 创建异步会话工厂
-AsyncSessionLocal = async_sessionmaker(
+AsyncSessionLocal = sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False,
 )
 
 
-class Base(DeclarativeBase):
-    """
-    SQLAlchemy模型基类.
-
-    所有模型类继承此基类.
-    """
-    pass
+# SQLAlchemy模型基类
+Base = declarative_base()
 
 
 async def get_db() -> AsyncSession:

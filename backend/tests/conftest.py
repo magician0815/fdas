@@ -9,7 +9,8 @@ Created: 2026-04-03
 
 import pytest
 import asyncio
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 
 from app.config.settings import settings
 
@@ -30,7 +31,7 @@ def event_loop():
 async def db_session():
     """创建数据库会话."""
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-    async_session_factory = async_sessionmaker(
+    async_session_factory = sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
 
