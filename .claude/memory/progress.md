@@ -5,9 +5,9 @@
 ## 当前状态
 
 **阶段**: 第一阶段 - 技术框架搭建与核心功能实现
-**当前模块**: Session管理
+**当前模块**: 登录API
 **状态**: pending
-**进度**: 49% (17/35)
+**进度**: 51% (18/35)
 **开始时间**: 2026-04-03
 **最后更新**: 2026-04-03
 
@@ -40,23 +40,22 @@
 
 ## 下一步任务
 
-**下一个模块**: Session管理（用户认证层 #17）
+**下一个模块**: 登录API（用户认证层 #18）
 
 **开发方式**: TDD
 
 **任务详情**:
 ```
-使用TDD开发Session管理：
-- 创建Session服务
-- 实现Session创建/查询/删除
-- 编写测试用例
+使用TDD开发登录API：
+- 创建auth路由
+- 实现登录接口
+- 返回Session Cookie
 ```
 
 **产出文件**:
-- `backend/app/services/session_service.py`
-- `backend/tests/test_session_service.py`
+- `backend/app/api/v1/auth.py`
 
-**验收标准**: 测试通过，Session CRUD成功
+**验收标准**: 登录成功返回Session Cookie
 
 ---
 
