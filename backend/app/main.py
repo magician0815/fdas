@@ -72,13 +72,13 @@ async def health_check():
 
 
 # 注册API路由
-from app.api.v1 import auth, users
+from app.api.v1 import auth, users, fx_data
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户管理"])
+app.include_router(fx_data.router, prefix="/api/v1/fx", tags=["汇率数据"])
 
 # TODO: 注册更多API路由
-# from app.api.v1 import fx_data, datasource, collection, system
-# app.include_router(fx_data.router, prefix="/api/v1/fx", tags=["汇率数据"])
+# from app.api.v1 import datasource, collection, system
 # app.include_router(datasource.router, prefix="/api/v1/datasource", tags=["数据源管理"])
 # app.include_router(collection.router, prefix="/api/v1/collection", tags=["采集任务管理"])
 # app.include_router(system.router, prefix="/api/v1/system", tags=["系统管理"])
