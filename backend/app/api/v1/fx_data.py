@@ -13,6 +13,7 @@ from typing import Optional
 from app.core.database import get_db
 from app.schemas.common import Response
 from app.services.fx_data_service import fx_data_service
+from app.services.technical_service import technical_service
 
 router = APIRouter()
 
@@ -59,4 +60,46 @@ async def get_fx_data(
             }
             for d in data
         ],
+    )
+
+
+@router.get("/indicators", response_model=Response)
+async def get_indicators(
+    symbol: str = Query(default="USDCNH", description="汇率符号"),
+    start_date: Optional[date] = Query(default=None, description="开始日期"),
+    end_date: Optional[date] = Query(default=None, description="结束日期"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取技术指标.
+
+    返回MA、MACD等技术指标数据.
+    """
+    # 默认查询最近30天
+    if not start_date:
+        start_date = date.today() - timedelta(days=30)
+    if not end_date:
+        end_date = date.today()
+
+    # 获取汇率数据
+    data = await fx_data_service.get_fx_data(
+        db=db,
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        limit=100,
+    )
+
+    if not data:
+        return Response(
+            success=True,
+            data={"ma": [], "macd": []},
+        )
+
+    # 计算技术指标
+    indicators = technical_service.calculate_all_indicators(data)
+
+    return Response(
+        success=True,
+        data=indicators,
     )
