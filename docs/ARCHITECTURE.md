@@ -2,8 +2,9 @@
 
 > 金融数据抓取与分析系统 - 技术架构说明书
 
-**版本**: 1.0
+**版本**: 1.1
 **创建日期**: 2026-04-03
+**更新日期**: 2026-04-10
 **作者**: FDAS Team
 
 ---
@@ -233,7 +234,86 @@ volumes:
 
 ## 四、数据库设计
 
-### 4.1 表结构设计
+### 4.1 设计理念
+
+| 设计原则 | 说明 |
+|---------|------|
+| 市场独立管理 | 每个市场独立建立标的基础信息表，采集时明确指定存入市场 |
+| 行情按市场分表 | 不同市场行情数据存储在不同表中，便于字段差异化和管理 |
+| 时间分区优化 | 大表使用PostgreSQL原生分区，按时间范围分片 |
+| 数据来源追踪 | 行情表记录datasource_id，支持同一标的多数据源 |
+| 更新时间追踪 | 行情表记录updated_at，知道数据何时被更新 |
+
+### 4.2 表命名规范
+
+```
+{市场}_{数据类型}
+
+市场前缀：
+  forex      → 外汇
+  stock_cn   → A股
+  stock_us   → 美股
+  stock_hk   → 港股
+  futures_cn → 国内期货
+  crypto     → 数字货币
+
+数据类型后缀：
+  symbols    → 标的基础信息
+  daily      → 日线行情
+  hourly     → 小时线行情
+  minute     → 分钟线行情
+```
+
+**示例**：
+| 表名 | 含义 |
+|------|------|
+| forex_symbols | 外汇标的基础信息 |
+| forex_daily | 外汇日线行情 |
+| stock_cn_symbols | A股标的基础信息 |
+| stock_cn_daily | A股日线行情 |
+
+### 4.3 表结构总览
+
+```
+业务系统表（7张）
+├── users               用户账户
+├── sessions            登录会话
+├── markets             市场类型定义
+├── datasources         数据源配置
+├── collection_tasks    采集任务
+├── collection_task_logs 采集日志
+└── apscheduler_jobs    定时任务
+
+外汇市场数据表（第一阶段）
+├── forex_symbols       外汇标的基础信息
+└── forex_daily         外汇日线行情（按年分区）
+
+其他市场数据表（后续阶段按需创建）
+├── stock_cn_symbols    A股标的基础信息
+├── stock_cn_daily      A股日线行情
+├── stock_us_symbols    美股标的基础信息
+├── stock_us_daily      美股日线行情
+├── futures_cn_symbols  国内期货标的基础信息
+├── futures_cn_daily    国内期货日线行情
+└── ...（遵循统一设计规范）
+```
+
+### 4.4 业务系统表结构
+
+#### markets表（市场类型定义）
+
+```sql
+CREATE TABLE markets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(20) UNIQUE NOT NULL,           -- 市场代码（forex, stock_cn）
+    name VARCHAR(50) NOT NULL,                   -- 市场名称（外汇, A股）
+    description TEXT,                            -- 市场描述
+    timezone VARCHAR(50) DEFAULT 'Asia/Shanghai',-- 市场时区
+    is_active BOOLEAN DEFAULT true,              -- 是否启用
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+```
 
 #### users表（用户账户）
 
@@ -246,23 +326,6 @@ CREATE TABLE users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX idx_users_username ON users(username);
-```
-
-#### sessions表（Session存储）
-
-```sql
-CREATE TABLE sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    session_data JSONB NOT NULL,  -- Session数据
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL  -- 过期时间
-);
-
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 ```
 
 #### datasources表（数据源配置）
@@ -270,9 +333,14 @@ CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 ```sql
 CREATE TABLE datasources (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(100) NOT NULL,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    market_id UUID REFERENCES markets(id),       -- 适用市场
+    interface VARCHAR(50) NOT NULL,
+    description TEXT,
+    config_schema JSONB NOT NULL,
+    supported_symbols JSONB,
+    min_date DATE,
     type VARCHAR(50) NOT NULL DEFAULT 'akshare',
-    config JSONB NOT NULL,  -- 配置参数（JSON格式）
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -285,64 +353,88 @@ CREATE TABLE datasources (
 CREATE TABLE collection_tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL,
-    datasource_id UUID NOT NULL REFERENCES datasources(id) ON DELETE CASCADE,
-    target_data VARCHAR(100) NOT NULL,  -- 目标数据字段
-    cron_expression VARCHAR(100) NOT NULL,  -- cron表达式
-    is_active BOOLEAN DEFAULT true,
-    last_run_at TIMESTAMP WITH TIME ZONE,  -- 上次执行时间
-    next_run_at TIMESTAMP WITH TIME ZONE,  -- 下次执行时间
+    datasource_id UUID NOT NULL REFERENCES datasources(id),
+    market_id UUID NOT NULL REFERENCES markets(id),  -- 目标市场
+    symbol_id UUID NOT NULL,                          -- 目标标的
+    start_date DATE,
+    end_date DATE,
+    cron_expr VARCHAR(100),
+    is_enabled BOOLEAN DEFAULT false,
+    last_run_at TIMESTAMP WITH TIME ZONE,
+    next_run_at TIMESTAMP WITH TIME ZONE,
+    last_status VARCHAR(20),
+    last_message TEXT,
+    last_records_count INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX idx_collection_tasks_datasource_id ON collection_tasks(datasource_id);
 ```
 
-#### fx_data表（汇率数据）
+### 4.5 外汇市场数据表结构（第一阶段）
+
+#### forex_symbols表（外汇标的基础信息）
 
 ```sql
-CREATE TABLE fx_data (
+CREATE TABLE forex_symbols (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    symbol VARCHAR(20) NOT NULL,  -- 如 USDCNH
-    date DATE NOT NULL,
-    open DECIMAL(10, 4),
-    high DECIMAL(10, 4),
-    low DECIMAL(10, 4),
-    close DECIMAL(10, 4),
-    volume BIGINT,
+    code VARCHAR(20) UNIQUE NOT NULL,                -- 货币对代码（USDCNY）
+    name VARCHAR(50) NOT NULL,                        -- 货币对名称（中文）
+    description TEXT,
+    datasource_id UUID REFERENCES datasources(id),
+    base_currency VARCHAR(10),                        -- 基础货币（USD）
+    quote_currency VARCHAR(10),                       -- 计价货币（CNY）
+    is_active BOOLEAN DEFAULT true,
+    first_trade_date DATE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(symbol, date)  -- 防止重复数据
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX idx_fx_data_symbol ON fx_data(symbol);
-CREATE INDEX idx_fx_data_date ON fx_data(date);
-CREATE INDEX idx_fx_data_symbol_date ON fx_data(symbol, date);
 ```
 
-#### apscheduler_jobs表（APScheduler任务）
+#### forex_daily表（外汇日线行情，按年分区）
 
 ```sql
-CREATE TABLE apscheduler_jobs (
-    id VARCHAR(255) PRIMARY KEY,
-    next_run_time TIMESTAMP WITH TIME ZONE,
-    job_state BYTEA NOT NULL  -- 任务状态（二进制）
-);
+-- 主表定义
+CREATE TABLE forex_daily (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    symbol_id UUID NOT NULL REFERENCES forex_symbols(id),
+    datasource_id UUID REFERENCES datasources(id),
+    date DATE NOT NULL,
+    open NUMERIC(10,4),
+    high NUMERIC(10,4),
+    low NUMERIC(10,4),
+    close NUMERIC(10,4),
+    change_pct NUMERIC(10,4),
+    change_amount NUMERIC(10,4),
+    amplitude NUMERIC(10,4),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(symbol_id, date, datasource_id)
+) PARTITION BY RANGE (date);
 
-CREATE INDEX idx_apscheduler_jobs_next_run_time ON apscheduler_jobs(next_run_time);
+-- 年分区
+CREATE TABLE forex_daily_2024 PARTITION OF forex_daily
+    FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+CREATE TABLE forex_daily_2025 PARTITION OF forex_daily
+    FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+CREATE TABLE forex_daily_2026 PARTITION OF forex_daily
+    FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
+CREATE TABLE forex_daily_default PARTITION OF forex_daily DEFAULT;
 ```
 
-### 4.2 索引策略
+### 4.6 其他市场表设计规范（后续阶段参照）
+
+详见 [CODE_STANDARDS.md](CODE_STANDARDS.md) 第1.4节"市场数据表设计规范"。
+
+### 4.7 索引策略
 
 | 表 | 索引 | 类型 | 用途 |
 |-----|------|------|------|
-| users | username | B-tree | 登录查询 |
-| sessions | user_id | B-tree | Session查找 |
-| sessions | expires_at | B-tree | 过期清理 |
-| fx_data | symbol | B-tree | 汇率查询 |
-| fx_data | date | B-tree | 时间范围查询 |
-| fx_data | (symbol, date) | B-tree复合 | 复合查询加速 |
-| collection_tasks | datasource_id | B-tree | 任务关联查询 |
-| apscheduler_jobs | next_run_time | B-tree | 任务调度查询 |
+| markets | code | B-tree | 市场查询 |
+| forex_symbols | code | B-tree | 标的查询 |
+| forex_symbols | (datasource_id) | B-tree | 数据源关联 |
+| forex_daily | (symbol_id, date) | B-tree复合 | 行情查询 |
+| forex_daily | date | B-tree | 时间范围查询 |
+| collection_tasks | (market_id) | B-tree | 市场过滤 |
+| collection_tasks | (is_enabled) | B-tree | 任务状态查询 |
 
 ### 4.3 连接池配置
 

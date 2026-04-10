@@ -5,7 +5,7 @@
 
 Author: FDAS Team
 Created: 2026-04-03
-Updated: 2026-04-10 - 新增symbol、start_date、end_date、last_status等字段，添加字段注释
+Updated: 2026-04-10 - 新增market_id、symbol_id字段，添加字段注释
 """
 
 from sqlalchemy import Column, String, DateTime, Boolean, Date, ForeignKey, Integer, Text, Index
@@ -26,7 +26,8 @@ class CollectionTask(Base):
         id: 任务ID（UUID）
         name: 任务名称
         datasource_id: 数据源ID（外键）
-        symbol: 货币对名称（中文）
+        market_id: 目标市场类型ID
+        symbol_id: 目标标的ID
         start_date: 采集开始日期
         end_date: 采集结束日期
         cron_expr: Cron表达式
@@ -42,6 +43,7 @@ class CollectionTask(Base):
     __tablename__ = "collection_tasks"
     __table_args__ = (
         Index("idx_collection_tasks_datasource", "datasource_id"),
+        Index("idx_collection_tasks_market", "market_id"),
         Index("idx_collection_tasks_enabled", "is_enabled"),
         Index("idx_collection_tasks_next_run", "next_run_at"),
     )
@@ -52,10 +54,15 @@ class CollectionTask(Base):
         UUID(as_uuid=True),
         ForeignKey("datasources.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
         comment="关联数据源ID"
     )
-    symbol = Column(String(50), nullable=False, comment="货币对名称（中文）")
+    market_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("markets.id"),
+        nullable=False,
+        comment="目标市场类型ID"
+    )
+    symbol_id = Column(UUID(as_uuid=True), nullable=False, comment="目标标的ID")
     start_date = Column(Date, comment="采集开始日期")
     end_date = Column(Date, comment="采集结束日期")
     cron_expr = Column(String(100), comment="Cron定时表达式")

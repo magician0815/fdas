@@ -5,23 +5,27 @@
 
 Author: FDAS Team
 Created: 2026-04-03
-Updated: 2026-04-10 - 新增CollectionTaskLog模型
+Updated: 2026-04-10 - 新增Market、ForexSymbol、ForexDaily模型，移除FXData
 """
 
 from app.core.database import Base
 from app.models.user import User
 from app.models.session import Session
-from app.models.fx_data import FXData
+from app.models.market import Market
 from app.models.datasource import DataSource
 from app.models.collection_task import CollectionTask
 from app.models.collection_task_log import CollectionTaskLog
+from app.models.forex_symbol import ForexSymbol
+from app.models.forex_daily import ForexDaily
 
 __all__ = [
     "Base",
     "User",
     "Session",
-    "FXData",
+    "Market",
     "DataSource",
     "CollectionTask",
     "CollectionTaskLog",
+    "ForexSymbol",
+    "ForexDaily",
 ]

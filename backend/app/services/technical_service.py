@@ -5,13 +5,13 @@
 
 Author: FDAS Team
 Created: 2026-04-03
+Updated: 2026-04-10 - 适配ForexDaily模型
 """
 
 from typing import List, Dict
-from decimal import Decimal
 import logging
 
-from app.models.fx_data import FXData
+from app.models.forex_daily import ForexDaily
 from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -26,14 +26,14 @@ class TechnicalService:
 
     def calculate_ma(
         self,
-        data: List[FXData],
+        data: List[ForexDaily],
         period: int = None,
     ) -> List[Dict]:
         """
         计算MA均线.
 
         Args:
-            data: 汇率数据列表
+            data: 日线数据列表
             period: 周期（默认使用配置）
 
         Returns:
@@ -46,9 +46,8 @@ class TechnicalService:
             return []
 
         # 简单移动平均计算（不依赖TA-Lib）
-        # 按日期升序排列
-        sorted_data = sorted(data, key=lambda x: x.date)
-        close_prices = [float(d.close) for d in sorted_data if d.close]
+        # 数据已按日期升序排列（由服务层保证）
+        close_prices = [float(d.close) for d in data if d.close]
 
         result = []
         for i in range(period - 1, len(close_prices)):
@@ -62,7 +61,7 @@ class TechnicalService:
 
     def calculate_macd(
         self,
-        data: List[FXData],
+        data: List[ForexDaily],
         fast: int = None,
         slow: int = None,
         signal: int = None,
@@ -71,7 +70,7 @@ class TechnicalService:
         计算MACD指标.
 
         Args:
-            data: 汇率数据列表
+            data: 日线数据列表
             fast: 快线周期
             slow: 慢线周期
             signal: 信号线周期
@@ -96,13 +95,13 @@ class TechnicalService:
 
     def calculate_all_indicators(
         self,
-        data: List[FXData],
+        data: List[ForexDaily],
     ) -> Dict:
         """
         计算所有技术指标.
 
         Args:
-            data: 汇率数据列表
+            data: 日线数据列表
 
         Returns:
             Dict: 所有技术指标数据

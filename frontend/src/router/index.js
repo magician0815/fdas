@@ -2,6 +2,10 @@
  * 路由配置模块.
  *
  * 定义应用路由结构和导航守卫.
+ *
+ * Author: FDAS Team
+ * Created: 2026-04-03
+ * Updated: 2026-04-10 - 优化路由配置，添加页面标题
  */
 
 import { createRouter, createWebHistory } from 'vue-router'
@@ -13,13 +17,17 @@ const routes = [
     path: '/login',
     name: 'Login',
     component: () => import('@/views/Login.vue'),
-    meta: { requiresAuth: false }
+    meta: { requiresAuth: false, title: '登录' }
   },
   {
     path: '/',
+    redirect: '/fx-data'
+  },
+  {
+    path: '/dashboard',
     name: 'Dashboard',
     component: () => import('@/views/Dashboard.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, title: '系统概览' }
   },
   {
     path: '/fx-data',

@@ -2,7 +2,7 @@
 
 > 金融数据抓取与分析系统 - 第一阶段实现设计说明书
 
-**版本**: 1.2
+**版本**: 1.3
 **创建日期**: 2026-04-03
 **更新日期**: 2026-04-10
 **作者**: FDAS Team
@@ -106,9 +106,11 @@
 | **模块名称** | 数据库初始化 |
 | **优先级** | P0 |
 | **依赖** | 无 |
-| **产出** | PostgreSQL表结构、Alembic迁移脚本 |
+| **产出** | PostgreSQL表结构、init-db.sql初始化脚本 |
 
 ### 2.2 实现思路
+
+> **重要变更**：项目开发过程中不使用Alembic迁移脚本，而是维护一份完整的数据库初始化脚本（`docker/init-db.sql`）。每次表结构更新直接修改此脚本，部署时清空数据库后执行一遍即可完成所有模型部署。这样简化了开发阶段的数据库迭代流程。
 
 #### 2.2.1 数据库连接
 
@@ -224,9 +226,9 @@ class Session(Base):
 
 ```python
 # backend/app/models/fx_data.py
-from sqlalchemy import Column, String, Date, Numeric, BigInteger, DateTime, UniqueConstraint
+from sqlalchemy import Column, String, Date, Numeric, BigInteger, DateTime, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, date
+from datetime import datetime
 import uuid
 
 from app.core.database import Base
@@ -238,218 +240,198 @@ class FXData(Base):
 
     Attributes:
         id: 数据ID（UUID）
-        symbol: 汇率符号（如USDCNH）
-        date: 日期
+        symbol: 货币对名称（中文，如"美元人民币"）
+        symbol_code: 货币对代码（英文，如"USDCNY"）
+        date: 交易日期
         open: 开盘价
         high: 最高价
         low: 最低价
         close: 收盘价
-        volume: 成交量
+        volume: 成交量（外汇通常为0）
+        change_pct: 涨跌幅(%)
+        change_amount: 涨跌额
+        amplitude: 振幅(%)
         created_at: 创建时间
     """
     __tablename__ = "fx_data"
     __table_args__ = (
         UniqueConstraint("symbol", "date", name="uq_fx_data_symbol_date"),
+        Index("idx_fx_data_symbol_code", "symbol_code"),
+        Index("idx_fx_data_symbol_date", "symbol", "date"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    symbol = Column(String(20), nullable=False, index=True)
-    date = Column(Date, nullable=False, index=True)
-    open = Column(Numeric(10, 4))
-    high = Column(Numeric(10, 4))
-    low = Column(Numeric(10, 4))
-    close = Column(Numeric(10, 4))
-    volume = Column(BigInteger)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="数据唯一标识ID")
+    symbol = Column(String(50), nullable=False, index=True, comment="货币对名称（中文）")
+    symbol_code = Column(String(20), nullable=False, comment="货币对代码（英文）")
+    date = Column(Date, nullable=False, index=True, comment="交易日期")
+    open = Column(Numeric(10, 4), comment="开盘价")
+    high = Column(Numeric(10, 4), comment="最高价")
+    low = Column(Numeric(10, 4), comment="最低价")
+    close = Column(Numeric(10, 4), comment="收盘价")
+    volume = Column(BigInteger, default=0, comment="成交量（外汇数据为0）")
+    change_pct = Column(Numeric(10, 4), comment="涨跌幅（百分比）")
+    change_amount = Column(Numeric(10, 4), comment="涨跌额")
+    amplitude = Column(Numeric(10, 4), comment="振幅（百分比）")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="记录创建时间")
 ```
 
-#### 2.2.3 Alembic迁移配置
-
-```ini
-# backend/alembic.ini
-[alembic]
-script_location = alembic
-prepend_sys_path = .
-sqlalchemy.url = postgresql+asyncpg://fdas:fdas@localhost:5432/fdas
-
-[loggers]
-keys = root,sqlalchemy,alembic
-
-[handlers]
-keys = console
-
-[formatters]
-keys = generic
-```
+**数据源模型**：
 
 ```python
-# backend/alembic/env.py
-import asyncio
-from logging.config import fileConfig
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import pool
-from alembic import context
+# backend/app/models/datasource.py
+class DataSource(Base):
+    """
+    数据源模型.
 
-from app.core.database import Base
-from app.models import user, session, fx_data, datasource, collection_task
+    Attributes:
+        id: 数据源ID（UUID）
+        name: 数据源名称（唯一）
+        interface: AKShare接口名称（如forex_hist）
+        description: 数据源描述
+        config_schema: 配置参数Schema（JSON，用于前端动态渲染表单）
+        supported_symbols: 支持的货币对列表（JSON）
+        min_date: 接口最早可用数据日期
+        type: 数据源类型（默认akshare）
+        is_active: 是否启用
+        created_at: 创建时间
+        updated_at: 更新时间
+    """
+    __tablename__ = "datasources"
 
-config = context.config
-fileConfig(config.config_file_name)
-target_metadata = Base.metadata
-
-
-def run_migrations_offline():
-    """离线模式运行迁移."""
-    url = config.get_main_option("sqlalchemy.url")
-    context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-def do_run_migrations(connection):
-    """执行迁移."""
-    context.configure(connection=connection, target_metadata=target_metadata)
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-async def run_async_migrations():
-    """在线模式运行异步迁移."""
-    connectable = create_async_engine(config.get_main_option("sqlalchemy.url"))
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-
-def run_migrations_online():
-    """在线模式运行迁移."""
-    asyncio.run(run_async_migrations())
-
-
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="数据源唯一标识ID")
+    name = Column(String(100), nullable=False, unique=True, comment="数据源名称")
+    interface = Column(String(50), nullable=False, comment="AKShare接口名称")
+    description = Column(Text, comment="数据源描述说明")
+    config_schema = Column(JSONB, nullable=False, comment="配置参数Schema（前端表单渲染）")
+    supported_symbols = Column(JSONB, comment="支持的货币对列表")
+    min_date = Column(Date, comment="接口最早可用数据日期")
+    type = Column(String(50), nullable=False, default="akshare", comment="数据源类型")
+    is_active = Column(Boolean, default=True, comment="是否启用")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
 ```
 
-**初始迁移脚本**：
+**采集任务模型**：
 
 ```python
-# backend/alembic/versions/001_initial.py
-"""初始表结构
+# backend/app/models/collection_task.py
+class CollectionTask(Base):
+    """
+    采集任务模型.
 
-Revision ID: 001
-Create Date: 2026-04-03
-"""
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+    Attributes:
+        id: 任务ID（UUID）
+        name: 任务名称
+        datasource_id: 数据源ID（外键）
+        symbol: 货币对名称（中文）
+        start_date: 采集开始日期
+        end_date: 采集结束日期
+        cron_expr: Cron表达式
+        is_enabled: 是否启用
+        last_run_at: 上次执行时间
+        next_run_at: 下次执行时间
+        last_status: 上次执行状态
+        last_message: 上次执行消息
+        last_records_count: 上次采集记录数
+        created_at: 创建时间
+        updated_at: 更新时间
+    """
+    __tablename__ = "collection_tasks"
 
-revision = '001'
-down_revision = None
-branch_labels = None
-depends_on = None
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="任务唯一标识ID")
+    name = Column(String(100), nullable=False, comment="任务名称")
+    datasource_id = Column(UUID(as_uuid=True), ForeignKey("datasources.id", ondelete="CASCADE"), nullable=False, index=True, comment="关联数据源ID")
+    symbol = Column(String(50), nullable=False, comment="货币对名称（中文）")
+    start_date = Column(Date, comment="采集开始日期")
+    end_date = Column(Date, comment="采集结束日期")
+    cron_expr = Column(String(100), comment="Cron定时表达式")
+    is_enabled = Column(Boolean, default=False, comment="是否启用")
+    last_run_at = Column(DateTime(timezone=True), comment="上次执行时间")
+    next_run_at = Column(DateTime(timezone=True), comment="下次执行时间")
+    last_status = Column(String(20), comment="上次执行状态")
+    last_message = Column(Text, comment="上次执行消息")
+    last_records_count = Column(Integer, default=0, comment="上次采集记录数")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+```
 
+**采集任务日志模型**：
 
-def upgrade():
-    # 创建uuid扩展
-    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+```python
+# backend/app/models/collection_task_log.py
+class CollectionTaskLog(Base):
+    """
+    采集任务执行日志模型.
 
-    # users表
-    op.create_table(
-        'users',
-        sa.Column('id', postgresql.UUID(as_uuid=True), server_default=sa.text('uuid_generate_v4()'), primary_key=True),
-        sa.Column('username', sa.String(50), nullable=False),
-        sa.Column('password_hash', sa.String(255), nullable=False),
-        sa.Column('role', sa.String(20), nullable=False, server_default='user'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
-    )
-    op.create_index('idx_users_username', 'users', ['username'], unique=True)
+    记录采集任务的每次执行情况.
 
-    # sessions表
-    op.create_table(
-        'sessions',
-        sa.Column('id', postgresql.UUID(as_uuid=True), server_default=sa.text('uuid_generate_v4()'), primary_key=True),
-        sa.Column('user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('session_data', postgresql.JSONB, nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
-    )
-    op.create_index('idx_sessions_user_id', 'sessions', ['user_id'])
-    op.create_index('idx_sessions_expires_at', 'sessions', ['expires_at'])
+    Attributes:
+        id: 日志ID（UUID）
+        task_id: 任务ID（外键）
+        run_at: 执行时间
+        status: 执行状态（success/failed/running）
+        records_count: 采集记录数
+        message: 执行消息/错误信息
+        duration_ms: 执行耗时（毫秒）
+        created_at: 创建时间
+    """
+    __tablename__ = "collection_task_logs"
 
-    # fx_data表
-    op.create_table(
-        'fx_data',
-        sa.Column('id', postgresql.UUID(as_uuid=True), server_default=sa.text('uuid_generate_v4()'), primary_key=True),
-        sa.Column('symbol', sa.String(20), nullable=False),
-        sa.Column('date', sa.Date, nullable=False),
-        sa.Column('open', sa.Numeric(10, 4)),
-        sa.Column('high', sa.Numeric(10, 4)),
-        sa.Column('low', sa.Numeric(10, 4)),
-        sa.Column('close', sa.Numeric(10, 4)),
-        sa.Column('volume', sa.BigInteger),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.UniqueConstraint('symbol', 'date', name='uq_fx_data_symbol_date'),
-    )
-    op.create_index('idx_fx_data_symbol', 'fx_data', ['symbol'])
-    op.create_index('idx_fx_data_date', 'fx_data', ['date'])
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="日志唯一标识ID")
+    task_id = Column(UUID(as_uuid=True), ForeignKey("collection_tasks.id", ondelete="CASCADE"), nullable=False, comment="关联任务ID")
+    run_at = Column(DateTime(timezone=True), nullable=False, comment="执行时间")
+    status = Column(String(20), nullable=False, comment="执行状态")
+    records_count = Column(Integer, default=0, comment="采集记录数")
+    message = Column(Text, comment="执行消息或错误信息")
+    duration_ms = Column(Integer, comment="执行耗时（毫秒）")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
+```
 
-    # datasources表
-    op.create_table(
-        'datasources',
-        sa.Column('id', postgresql.UUID(as_uuid=True), server_default=sa.text('uuid_generate_v4()'), primary_key=True),
-        sa.Column('name', sa.String(100), nullable=False),
-        sa.Column('type', sa.String(50), nullable=False, server_default='akshare'),
-        sa.Column('config', postgresql.JSONB, nullable=False),
-        sa.Column('is_active', sa.Boolean, server_default='true'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
-    )
+#### 2.2.2 数据库初始化脚本
 
-    # collection_tasks表
-    op.create_table(
-        'collection_tasks',
-        sa.Column('id', postgresql.UUID(as_uuid=True), server_default=sa.text('uuid_generate_v4()'), primary_key=True),
-        sa.Column('name', sa.String(100), nullable=False),
-        sa.Column('datasource_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('datasources.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('target_data', sa.String(100), nullable=False),
-        sa.Column('cron_expression', sa.String(100), nullable=False),
-        sa.Column('is_active', sa.Boolean, server_default='true'),
-        sa.Column('last_run_at', sa.DateTime(timezone=True)),
-        sa.Column('next_run_at', sa.DateTime(timezone=True)),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
-    )
-    op.create_index('idx_collection_tasks_datasource_id', 'collection_tasks', ['datasource_id'])
+使用单份完整的初始化脚本替代Alembic迁移：
 
-    # apscheduler_jobs表
-    op.create_table(
-        'apscheduler_jobs',
-        sa.Column('id', sa.String(255), primary_key=True),
-        sa.Column('next_run_time', sa.DateTime(timezone=True)),
-        sa.Column('job_state', sa.LargeBinary, nullable=False),
-    )
-    op.create_index('idx_apscheduler_jobs_next_run_time', 'apscheduler_jobs', ['next_run_time'])
+```sql
+-- docker/init-db.sql
+-- 完整的数据库初始化脚本
+-- 每次表结构更新直接修改此脚本
 
+-- 创建扩展
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-def downgrade():
-    op.drop_table('apscheduler_jobs')
-    op.drop_table('collection_tasks')
-    op.drop_table('datasources')
-    op.drop_table('fx_data')
-    op.drop_table('sessions')
-    op.drop_table('users')
+-- 所有表定义（含字段注释）
+CREATE TABLE IF NOT EXISTS users (...);
+CREATE TABLE IF NOT EXISTS sessions (...);
+CREATE TABLE IF NOT EXISTS datasources (...);
+CREATE TABLE IF NOT EXISTS collection_tasks (...);
+CREATE TABLE IF NOT EXISTS collection_task_logs (...);
+CREATE TABLE IF NOT EXISTS fx_data (...);
+CREATE TABLE IF NOT EXISTS apscheduler_jobs (...);
+
+-- 所有字段中文注释
+COMMENT ON COLUMN users.id IS '用户唯一标识ID';
+COMMENT ON COLUMN users.username IS '用户名';
+...
+
+-- 所有索引
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+...
+
+-- 初始数据
+INSERT INTO users (...) VALUES (...) ON CONFLICT DO NOTHING;
+INSERT INTO datasources (...) VALUES (...) ON CONFLICT DO NOTHING;
 ```
 
 ### 2.3 验收标准
 
 | 验收项 | 验收方式 | 通过标准 |
 |--------|---------|---------|
-| 数据库连接 | `alembic upgrade head` | 无错误输出 |
-| 表结构创建 | `\dt` in psql | 6张表存在 |
-| 索引创建 | `\di` in psql | 索引存在 |
+| 数据库连接 | `psql -h localhost -U fdas -d fdas` | 连接成功 |
+| 表结构创建 | `\dt` in psql | 7张表存在（users, sessions, datasources, collection_tasks, collection_task_logs, fx_data, apscheduler_jobs） |
+| 字段注释 | `\d+ users` in psql | 每个字段都有中文注释 |
+| 索引创建 | `\di` in psql | 所有索引存在 |
 | 默认admin用户 | `SELECT * FROM users` | admin用户存在 |
+| 默认数据源 | `SELECT * FROM datasources` | forex_hist数据源存在 |
 
 ---
 

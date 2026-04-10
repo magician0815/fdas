@@ -5,6 +5,7 @@ Alembic异步迁移环境配置.
 
 Author: FDAS Team
 Created: 2026-04-03
+Updated: 2026-04-10 - 更新模型导入，移除FXData，添加新模型
 """
 
 import asyncio
@@ -19,7 +20,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.database import Base
-from app.models import User, Session, FXData, DataSource, CollectionTask
+from app.models import User, Session, Market, DataSource, CollectionTask, CollectionTaskLog, ForexSymbol, ForexDaily
 
 # Alembic Config对象
 config = context.config

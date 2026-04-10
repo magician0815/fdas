@@ -2,7 +2,7 @@
 
 > 金融数据抓取与分析系统 - 代码编写规范说明书
 
-**版本**: 1.1
+**版本**: 1.2
 **创建日期**: 2026-04-03
 **更新日期**: 2026-04-10
 **作者**: FDAS Team
@@ -261,7 +261,154 @@ def upgrade():
 - `货币对中文名称美国人民币欧元美元英镑美元等等` - 过长，冗余
 - `这是一个用来存储汇率开盘价格的字段` - 冗余表述
 
-### 1.4 Vue/JavaScript注释规范
+### 1.4 市场数据表设计规范
+
+#### 1.4.1 表命名规范
+
+所有市场数据表遵循统一命名格式：`{市场}_{数据类型}`
+
+```
+市场前缀：
+  forex      → 外汇
+  stock_cn   → A股
+  stock_us   → 美股
+  stock_hk   → 港股
+  futures_cn → 国内期货
+  crypto     → 数字货币
+
+数据类型后缀：
+  symbols    → 标的基础信息
+  daily      → 日线行情
+  hourly     → 小时线行情
+  minute     → 分钟线行情
+```
+
+**命名示例**：
+| 表名 | 含义 |
+|------|------|
+| forex_symbols | 外汇标的基础信息 |
+| forex_daily | 外汇日线行情 |
+| stock_cn_symbols | A股标的基础信息 |
+| stock_cn_daily | A股日线行情 |
+| futures_cn_daily | 国内期货日线行情 |
+
+#### 1.4.2 标的基础信息表设计规范
+
+每个市场独立建立标的基础信息表，遵循以下结构：
+
+```sql
+-- 标的基础信息表通用结构
+CREATE TABLE {市场}_symbols (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(20) UNIQUE NOT NULL,                -- 标的代码
+    name VARCHAR(50) NOT NULL,                        -- 标的名称
+    description TEXT,                                 -- 描述说明
+    datasource_id UUID REFERENCES datasources(id),    -- 默认数据来源
+    is_active BOOLEAN DEFAULT true,                   -- 是否启用
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**不同市场可增加特定字段**：
+
+| 市场 | 特定字段 | 说明 |
+|------|---------|------|
+| forex | base_currency, quote_currency | 基础货币、计价货币 |
+| stock_cn | exchange, industry, listing_date | 交易所、行业、上市日期 |
+| stock_us | exchange, sector | 交易所、板块 |
+| futures_cn | underlying, contract_month, lot_size, last_trade_date | 标的指数、合约月份、合约单位、到期日 |
+
+#### 1.4.3 日线行情表设计规范
+
+每个市场按周期建立行情表，日线行情表遵循以下结构：
+
+```sql
+-- 日线行情表通用结构（分区表）
+CREATE TABLE {市场}_daily (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    symbol_id UUID NOT NULL REFERENCES {市场}_symbols(id),  -- 关联标的
+    datasource_id UUID REFERENCES datasources(id),          -- 数据来源
+    date DATE NOT NULL,                                      -- 交易日期
+    open NUMERIC(10,4),                                      -- 开盘价
+    high NUMERIC(10,4),                                      -- 最高价
+    low NUMERIC(10,4),                                       -- 最低价
+    close NUMERIC(10,4),                                     -- 收盘价
+    change_pct NUMERIC(10,4),                                -- 涨跌幅
+    change_amount NUMERIC(10,4),                             -- 涨跌额
+    amplitude NUMERIC(10,4),                                 -- 振幅
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,  -- 更新时间
+    UNIQUE(symbol_id, date, datasource_id)
+) PARTITION BY RANGE (date);
+```
+
+**不同市场可增加特定字段**：
+
+| 市场 | 特定字段 | 说明 |
+|------|---------|------|
+| stock_cn | volume, turnover, turnover_rate | 成交量、成交额、换手率 |
+| futures_cn | volume, turnover, open_interest | 成交量、成交额、持仓量 |
+
+#### 1.4.4 时间分区规范
+
+行情数据表必须使用PostgreSQL原生分区，按时间范围分片：
+
+```sql
+-- 日线表：按年分区
+CREATE TABLE {市场}_daily_2024 PARTITION OF {市场}_daily
+    FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+CREATE TABLE {市场}_daily_2025 PARTITION OF {市场}_daily
+    FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+CREATE TABLE {市场}_daily_default PARTITION OF {市场}_daily DEFAULT;
+
+-- 小时线表：按月分区
+CREATE TABLE {市场}_hourly_202601 PARTITION OF {市场}_hourly
+    FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+
+-- 分钟线表：按日分区（数据量大时）
+-- 后续阶段使用TimescaleDB自动管理
+```
+
+#### 1.4.5 新市场扩展流程
+
+扩展新市场时，按以下流程创建表：
+
+1. **在markets表添加市场类型**
+   ```sql
+   INSERT INTO markets (code, name, description, timezone)
+   VALUES ('新市场代码', '新市场名称', '描述', '时区');
+   ```
+
+2. **创建标的基础信息表**
+   - 使用命名规范：`{市场}_symbols`
+   - 包含通用字段 + 市场特定字段
+   - 添加所有字段中文注释
+
+3. **创建行情表**
+   - 按周期创建：`{市场}_daily`, `{市场}_hourly`...
+   - 包含通用字段 + 市场特定字段
+   - 设置时间分区
+   - 创建索引
+
+4. **创建索引**
+   ```sql
+   CREATE INDEX idx_{市场}_symbols_code ON {市场}_symbols(code);
+   CREATE INDEX idx_{市场}_daily_symbol_date ON {市场}_daily(symbol_id, date DESC);
+   CREATE INDEX idx_{市场}_daily_date ON {市场}_daily(date DESC);
+   ```
+
+#### 1.4.6 设计规范总结
+
+| 规范项 | 要求 |
+|--------|------|
+| 表命名 | `{市场}_{数据类型}` 格式 |
+| 市场隔离 | 每个市场独立symbols表和行情表 |
+| 时间分区 | 日线按年，小时线按月，分钟线后续用TimescaleDB |
+| 字段注释 | 所有字段必须有中文注释 |
+| 数据来源 | 行情表记录datasource_id |
+| 更新追踪 | 行情表记录updated_at |
+
+### 1.5 Vue/JavaScript注释规范
 
 #### 1.3.1 Vue组件注释
 
