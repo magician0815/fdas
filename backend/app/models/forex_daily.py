@@ -5,9 +5,10 @@
 
 Author: FDAS Team
 Created: 2026-04-10
+Updated: 2026-04-11 - 新增volume字段
 """
 
-from sqlalchemy import Column, String, Date, Numeric, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Date, Numeric, DateTime, ForeignKey, UniqueConstraint, BigInteger
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
@@ -31,6 +32,7 @@ class ForexDaily(Base):
         high: 最高价
         low: 最低价
         close: 收盘价
+        volume: 成交量（外汇数据通常为0）
         change_pct: 涨跌幅（百分比）
         change_amount: 涨跌额
         amplitude: 振幅（百分比）
@@ -51,6 +53,7 @@ class ForexDaily(Base):
     high = Column(Numeric(10, 4), comment="最高价")
     low = Column(Numeric(10, 4), comment="最低价")
     close = Column(Numeric(10, 4), comment="收盘价")
+    volume = Column(BigInteger, default=0, comment="成交量（外汇数据通常为0）")
     change_pct = Column(Numeric(10, 4), comment="涨跌幅（百分比）")
     change_amount = Column(Numeric(10, 4), comment="涨跌额")
     amplitude = Column(Numeric(10, 4), comment="振幅（百分比）")

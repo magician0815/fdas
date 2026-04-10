@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS forex_daily (
     high NUMERIC(10, 4),
     low NUMERIC(10, 4),
     close NUMERIC(10, 4),
+    volume BIGINT DEFAULT 0,
     change_pct NUMERIC(10, 4),
     change_amount NUMERIC(10, 4),
     amplitude NUMERIC(10, 4),
@@ -227,6 +228,7 @@ COMMENT ON COLUMN forex_daily.open IS '开盘价';
 COMMENT ON COLUMN forex_daily.high IS '最高价';
 COMMENT ON COLUMN forex_daily.low IS '最低价';
 COMMENT ON COLUMN forex_daily.close IS '收盘价';
+COMMENT ON COLUMN forex_daily.volume IS '成交量（外汇数据通常为0）';
 COMMENT ON COLUMN forex_daily.change_pct IS '涨跌幅（百分比）';
 COMMENT ON COLUMN forex_daily.change_amount IS '涨跌额';
 COMMENT ON COLUMN forex_daily.amplitude IS '振幅（百分比）';
@@ -244,6 +246,27 @@ CREATE TABLE IF NOT EXISTS forex_daily_2026 PARTITION OF forex_daily
 
 CREATE TABLE IF NOT EXISTS forex_daily_default PARTITION OF forex_daily
     DEFAULT;
+
+-- 用户图表配置表（存储画线工具设置、主题偏好等）
+CREATE TABLE IF NOT EXISTS user_chart_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    setting_type VARCHAR(50) NOT NULL,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, setting_type, setting_key)
+);
+
+COMMENT ON TABLE user_chart_settings IS '用户图表个性化配置存储表';
+COMMENT ON COLUMN user_chart_settings.id IS '配置记录唯一标识ID';
+COMMENT ON COLUMN user_chart_settings.user_id IS '关联用户ID';
+COMMENT ON COLUMN user_chart_settings.setting_type IS '配置类型（drawing_tools/theme/indicators/view）';
+COMMENT ON COLUMN user_chart_settings.setting_key IS '配置键名';
+COMMENT ON COLUMN user_chart_settings.setting_value IS '配置值（JSON格式）';
+COMMENT ON COLUMN user_chart_settings.created_at IS '创建时间';
+COMMENT ON COLUMN user_chart_settings.updated_at IS '更新时间';
 
 -- ============================================
 -- 创建索引
@@ -282,6 +305,10 @@ CREATE INDEX IF NOT EXISTS idx_forex_symbols_active ON forex_symbols(is_active);
 CREATE INDEX IF NOT EXISTS idx_forex_daily_symbol_date ON forex_daily(symbol_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_forex_daily_date ON forex_daily(date DESC);
 CREATE INDEX IF NOT EXISTS idx_forex_daily_datasource ON forex_daily(datasource_id);
+
+-- 用户图表配置表索引
+CREATE INDEX IF NOT EXISTS idx_user_chart_settings_user ON user_chart_settings(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_chart_settings_type ON user_chart_settings(setting_type);
 
 -- APScheduler任务表索引
 CREATE INDEX IF NOT EXISTS idx_apscheduler_jobs_next_run_time ON apscheduler_jobs(next_run_time);
