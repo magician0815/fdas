@@ -2,9 +2,9 @@
 
 > 金融数据抓取与分析系统 - 技术架构说明书
 
-**版本**: 1.1
+**版本**: 1.2
 **创建日期**: 2026-04-03
-**更新日期**: 2026-04-10
+**更新日期**: 2026-04-11
 **作者**: FDAS Team
 
 ---
@@ -20,6 +20,7 @@
 | **异步优先** | 提升并发性能 | FastAPI async + SQLAlchemy async |
 | **容器化** | 简化部署运维 | Docker Compose编排 |
 | **可扩展** | 预留扩展接口 | 插件式模块设计 |
+| **用户个性化** | 用户配置持久化 | user_chart_settings表存储用户偏好 |
 
 ### 1.2 六层架构图
 
@@ -275,18 +276,19 @@ volumes:
 ### 4.3 表结构总览
 
 ```
-业务系统表（7张）
+业务系统表（8张）
 ├── users               用户账户
 ├── sessions            登录会话
 ├── markets             市场类型定义
 ├── datasources         数据源配置
 ├── collection_tasks    采集任务
 ├── collection_task_logs 采集日志
+├── user_chart_settings 用户图表配置（第二阶段新增）
 └── apscheduler_jobs    定时任务
 
 外汇市场数据表（第一阶段）
 ├── forex_symbols       外汇标的基础信息
-└── forex_daily         外汇日线行情（按年分区）
+└── forex_daily         外汇日线行情（按年分区，含volume字段）
 
 其他市场数据表（后续阶段按需创建）
 ├── stock_cn_symbols    A股标的基础信息
@@ -403,6 +405,7 @@ CREATE TABLE forex_daily (
     high NUMERIC(10,4),
     low NUMERIC(10,4),
     close NUMERIC(10,4),
+    volume BIGINT DEFAULT 0,                -- 成交量（外汇数据通常为0）
     change_pct NUMERIC(10,4),
     change_amount NUMERIC(10,4),
     amplitude NUMERIC(10,4),
@@ -420,6 +423,22 @@ CREATE TABLE forex_daily_2026 PARTITION OF forex_daily
 CREATE TABLE forex_daily_default PARTITION OF forex_daily DEFAULT;
 ```
 
+#### user_chart_settings表（用户图表配置，第二阶段新增）
+
+```sql
+-- 用户图表配置表（存储画线工具设置、主题偏好等）
+CREATE TABLE user_chart_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    setting_type VARCHAR(50) NOT NULL,       -- 配置类型：drawing_tools/theme/indicators/view
+    setting_key VARCHAR(100) NOT NULL,       -- 配置键名
+    setting_value JSONB NOT NULL,            -- 配置值（JSON格式）
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, setting_type, setting_key)
+);
+```
+
 ### 4.6 其他市场表设计规范（后续阶段参照）
 
 详见 [CODE_STANDARDS.md](CODE_STANDARDS.md) 第1.4节"市场数据表设计规范"。
@@ -435,6 +454,8 @@ CREATE TABLE forex_daily_default PARTITION OF forex_daily DEFAULT;
 | forex_daily | date | B-tree | 时间范围查询 |
 | collection_tasks | (market_id) | B-tree | 市场过滤 |
 | collection_tasks | (is_enabled) | B-tree | 任务状态查询 |
+| user_chart_settings | (user_id) | B-tree | 用户配置查询 |
+| user_chart_settings | (setting_type) | B-tree | 配置类型过滤 |
 
 ### 4.3 连接池配置
 
