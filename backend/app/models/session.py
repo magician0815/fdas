@@ -5,6 +5,7 @@ Session模型.
 
 Author: FDAS Team
 Created: 2026-04-03
+Updated: 2026-04-10 - 添加字段注释
 """
 
 from sqlalchemy import Column, String, DateTime, ForeignKey
@@ -19,6 +20,8 @@ class Session(Base):
     """
     Session模型.
 
+    存储用户登录会话信息.
+
     Attributes:
         id: Session ID（UUID）
         user_id: 用户ID（外键）
@@ -28,13 +31,14 @@ class Session(Base):
     """
     __tablename__ = "sessions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="会话唯一标识ID")
     user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
-        index=True
+        index=True,
+        comment="关联用户ID"
     )
-    session_data = Column(JSONB, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    session_data = Column(JSONB, nullable=False, comment="会话数据")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True, comment="过期时间")

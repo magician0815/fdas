@@ -5,7 +5,7 @@
 
 Author: FDAS Team
 Created: 2026-04-03
-Updated: 2026-04-10 - 新增symbol、start_date、end_date、last_status等字段
+Updated: 2026-04-10 - 新增symbol、start_date、end_date、last_status等字段，添加字段注释
 """
 
 from sqlalchemy import Column, String, DateTime, Boolean, Date, ForeignKey, Integer, Text, Index
@@ -19,6 +19,8 @@ from app.core.database import Base
 class CollectionTask(Base):
     """
     采集任务模型.
+
+    存储采集任务配置和执行状态.
 
     Attributes:
         id: 任务ID（UUID）
@@ -44,23 +46,24 @@ class CollectionTask(Base):
         Index("idx_collection_tasks_next_run", "next_run_at"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(100), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="任务唯一标识ID")
+    name = Column(String(100), nullable=False, comment="任务名称")
     datasource_id = Column(
         UUID(as_uuid=True),
         ForeignKey("datasources.id", ondelete="CASCADE"),
         nullable=False,
-        index=True
+        index=True,
+        comment="关联数据源ID"
     )
-    symbol = Column(String(50), nullable=False)  # 货币对名称（中文）
-    start_date = Column(Date)  # 采集开始日期
-    end_date = Column(Date)  # 采集结束日期
-    cron_expr = Column(String(100))  # Cron表达式
-    is_enabled = Column(Boolean, default=False)  # 是否启用
-    last_run_at = Column(DateTime(timezone=True))  # 上次执行时间
-    next_run_at = Column(DateTime(timezone=True))  # 下次执行时间
-    last_status = Column(String(20))  # 上次执行状态
-    last_message = Column(Text)  # 上次执行消息
-    last_records_count = Column(Integer, default=0)  # 上次采集记录数
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    symbol = Column(String(50), nullable=False, comment="货币对名称（中文）")
+    start_date = Column(Date, comment="采集开始日期")
+    end_date = Column(Date, comment="采集结束日期")
+    cron_expr = Column(String(100), comment="Cron定时表达式")
+    is_enabled = Column(Boolean, default=False, comment="是否启用")
+    last_run_at = Column(DateTime(timezone=True), comment="上次执行时间")
+    next_run_at = Column(DateTime(timezone=True), comment="下次执行时间")
+    last_status = Column(String(20), comment="上次执行状态")
+    last_message = Column(Text, comment="上次执行消息")
+    last_records_count = Column(Integer, default=0, comment="上次采集记录数")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")

@@ -5,7 +5,7 @@
 
 Author: FDAS Team
 Created: 2026-04-03
-Updated: 2026-04-10 - 新增symbol_code、change_pct、change_amount、amplitude字段
+Updated: 2026-04-10 - 新增symbol_code、change_pct、change_amount、amplitude字段，添加字段注释
 """
 
 from sqlalchemy import Column, String, Date, Numeric, BigInteger, DateTime, Index, UniqueConstraint
@@ -19,6 +19,8 @@ from app.core.database import Base
 class FXData(Base):
     """
     汇率数据模型.
+
+    存储外汇日线行情数据.
 
     Attributes:
         id: 数据ID（UUID）
@@ -42,16 +44,16 @@ class FXData(Base):
         Index("idx_fx_data_symbol_date", "symbol", "date"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    symbol = Column(String(50), nullable=False, index=True)
-    symbol_code = Column(String(20), nullable=False)  # 货币对英文代码
-    date = Column(Date, nullable=False, index=True)
-    open = Column(Numeric(10, 4))
-    high = Column(Numeric(10, 4))
-    low = Column(Numeric(10, 4))
-    close = Column(Numeric(10, 4))
-    volume = Column(BigInteger, default=0)  # 外汇数据volume为0
-    change_pct = Column(Numeric(10, 4))  # 涨跌幅
-    change_amount = Column(Numeric(10, 4))  # 涨跌额
-    amplitude = Column(Numeric(10, 4))  # 振幅
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="数据唯一标识ID")
+    symbol = Column(String(50), nullable=False, index=True, comment="货币对名称（中文）")
+    symbol_code = Column(String(20), nullable=False, comment="货币对代码（英文）")
+    date = Column(Date, nullable=False, index=True, comment="交易日期")
+    open = Column(Numeric(10, 4), comment="开盘价")
+    high = Column(Numeric(10, 4), comment="最高价")
+    low = Column(Numeric(10, 4), comment="最低价")
+    close = Column(Numeric(10, 4), comment="收盘价")
+    volume = Column(BigInteger, default=0, comment="成交量（外汇数据为0）")
+    change_pct = Column(Numeric(10, 4), comment="涨跌幅（百分比）")
+    change_amount = Column(Numeric(10, 4), comment="涨跌额")
+    amplitude = Column(Numeric(10, 4), comment="振幅（百分比）")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="记录创建时间")

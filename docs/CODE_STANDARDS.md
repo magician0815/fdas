@@ -2,8 +2,9 @@
 
 > 金融数据抓取与分析系统 - 代码编写规范说明书
 
-**版本**: 1.0
+**版本**: 1.1
 **创建日期**: 2026-04-03
+**更新日期**: 2026-04-10
 **作者**: FDAS Team
 
 ---
@@ -125,7 +126,142 @@ scheduler.add_job(
 )
 ```
 
-### 1.3 Vue/JavaScript注释规范
+### 1.3 数据库字段注释规范
+
+#### 1.3.1 强制要求
+
+**所有数据库表的每个字段都必须添加中文注释**。
+
+| 要求项 | 说明 |
+|--------|------|
+| **注释内容** | 使用中文，简洁准确描述字段含义 |
+| **注释长度** | 适当长度，一般不超过30个字符 |
+| **适用范围** | 所有表的所有字段，包括主键、外键、时间戳等 |
+
+#### 1.3.2 SQLAlchemy模型注释方式
+
+使用 `comment` 参数为每个字段添加注释：
+
+```python
+from sqlalchemy import Column, String, Date, Numeric, DateTime
+from sqlalchemy.dialects.postgresql import UUID
+
+class FXData(Base):
+    """
+    汇率数据模型.
+
+    存储外汇日线行情数据.
+    """
+    __tablename__ = "fx_data"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        comment="数据唯一标识ID"
+    )
+    symbol = Column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="货币对名称（中文，如美元人民币）"
+    )
+    symbol_code = Column(
+        String(20),
+        nullable=False,
+        comment="货币对代码（英文，如USDCNY）"
+    )
+    date = Column(
+        Date,
+        nullable=False,
+        index=True,
+        comment="交易日期"
+    )
+    open = Column(
+        Numeric(10, 4),
+        comment="开盘价"
+    )
+    high = Column(
+        Numeric(10, 4),
+        comment="最高价"
+    )
+    low = Column(
+        Numeric(10, 4),
+        comment="最低价"
+    )
+    close = Column(
+        Numeric(10, 4),
+        comment="收盘价"
+    )
+    volume = Column(
+        BigInteger,
+        default=0,
+        comment="成交量（外汇数据通常为0）"
+    )
+    change_pct = Column(
+        Numeric(10, 4),
+        comment="涨跌幅（百分比）"
+    )
+    change_amount = Column(
+        Numeric(10, 4),
+        comment="涨跌额"
+    )
+    amplitude = Column(
+        Numeric(10, 4),
+        comment="振幅（百分比）"
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        comment="记录创建时间"
+    )
+```
+
+#### 1.3.3 Alembic迁移脚本注释
+
+迁移脚本中必须为字段添加注释：
+
+```python
+# backend/alembic/versions/xxx_update_tables.py
+def upgrade():
+    op.create_table(
+        'fx_data',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True,
+                  comment='数据唯一标识ID'),
+        sa.Column('symbol', sa.String(50), nullable=False,
+                  comment='货币对名称（中文，如美元人民币）'),
+        sa.Column('symbol_code', sa.String(20), nullable=False,
+                  comment='货币对代码（英文，如USDCNY）'),
+        sa.Column('date', sa.Date, nullable=False,
+                  comment='交易日期'),
+        sa.Column('open', sa.Numeric(10, 4),
+                  comment='开盘价'),
+        # ... 其他字段
+    )
+```
+
+#### 1.3.4 注释长度规范
+
+| 字段类型 | 注释长度建议 | 示例 |
+|----------|-------------|------|
+| **主键ID** | 简短，10字符以内 | `数据ID`、`唯一标识ID` |
+| **业务字段** | 简洁描述，15-30字符 | `货币对名称（中文）`、`开盘价`、`涨跌幅（百分比）` |
+| **时间戳字段** | 标准格式 | `创建时间`、`更新时间`、`上次执行时间` |
+| **状态字段** | 说明含义 | `执行状态（success/failed/running）` |
+| **外键字段** | 说明关联 | `关联数据源ID`、`关联任务ID` |
+
+#### 1.3.5 注释内容规范
+
+**好的注释示例**：
+- `货币对名称（中文，如美元人民币）` - 含义清晰，有示例
+- `涨跌幅（百分比）` - 说明单位
+- `执行状态（success/failed/running）` - 说明可选值
+- `关联数据源ID` - 说明关联关系
+
+**不好的注释示例**：
+- `symbol` - 无中文说明
+- `货币对中文名称美国人民币欧元美元英镑美元等等` - 过长，冗余
+- `这是一个用来存储汇率开盘价格的字段` - 冗余表述
+
+### 1.4 Vue/JavaScript注释规范
 
 #### 1.3.1 Vue组件注释
 
