@@ -2,9 +2,9 @@
 
 > 金融数据抓取与分析系统 - 第一阶段实现设计说明书
 
-**版本**: 1.1
+**版本**: 1.2
 **创建日期**: 2026-04-03
-**更新日期**: 2026-04-03
+**更新日期**: 2026-04-10
 **作者**: FDAS Team
 
 ---
@@ -13,14 +13,14 @@
 
 ### 1.1 开发目标
 
-第一阶段聚焦技术框架搭建和核心功能实现，完成USDCNH汇率数据的自动采集与可视化展示。
+第一阶段聚焦技术框架搭建和核心功能实现，完成外汇汇率数据的自动采集与可视化展示。
 
 **核心目标（必须验收）**：
 1. 完成技术框架搭建（配置、日志、数据库）
 2. 完成用户认证与权限管理
-3. **完成USDCNH数据实际采集与入库（非模拟数据）**
+3. **完成外汇数据实际采集与入库（使用AKShare forex_hist接口，非模拟数据）**
 4. **完成K线/均线/MACD可视化展示（基于真实数据）**
-5. **完成数据源和采集任务的Web配置（功能可用）**
+5. **完成数据源和采集任务的Web配置（功能可用，支持参数校验）**
 
 ### 1.2 核心验收标准
 
@@ -933,49 +933,109 @@ async def require_admin(
 | 属性 | 说明 |
 |------|------|
 | **模块名称** | 数据采集模块 |
-| **优先级** | P1 |
+| **优先级** | P0 |
 | **依赖** | 权限管理模块 |
-| **产出** | AKShare采集器、APScheduler调度、数据入库 |
+| **产出** | AKShare采集器、APScheduler调度、数据入库、数据源管理API、采集任务管理API |
 
-### 7.2 实现思路
+### 7.2 AKShare接口规范
 
-#### 7.2.1 AKShare采集器
+#### 7.2.1 forex_hist接口
+
+**接口名称**：`forex_hist` - 外汇日线行情
+
+**输入参数**：
+
+| 参数名 | 类型 | 必须 | 默认值 | 描述 |
+|--------|------|------|--------|------|
+| `symbol` | str | Y | "美元人民币" | 货币对名称（中文） |
+| `start_date` | str | N | "20200101" | 开始日期，格式：YYYYMMDD |
+| `end_date` | str | N | "20241231" | 结束日期，格式：YYYYMMDD |
+| `adjust` | str | N | "" | 复权类型（暂不支持） |
+
+**返回字段**：
+
+| 字段名 | 类型 | 描述 |
+|--------|------|------|
+| 日期 | datetime | 交易日期 |
+| 开盘价 | float | 开盘价格 |
+| 收盘价 | float | 收盘价格 |
+| 最高价 | float | 最高价格 |
+| 最低价 | float | 最低价格 |
+| 成交量 | float | 成交量（外汇通常为0） |
+| 涨跌幅 | float | 涨跌幅(%) |
+| 涨跌额 | float | 涨跌额 |
+| 振幅 | float | 振幅(%) |
+
+**支持的货币对**：
+```
+美元人民币(USDCNY)、欧元美元(EURUSD)、英镑美元(GBPUSD)、美元日元(USDJPY)、
+澳元美元(AUDUSD)、美元加元(USDCAD)、美元瑞郎(USDCHF)、新西兰元美元(NZDUSD)、
+欧元英镑(EURGBP)、欧元日元(EURJPY)、英镑日元(GBPJPY)、澳元日元(AUDJPY)
+```
+
+### 7.3 实现思路
+
+#### 7.3.1 AKShare采集器
 
 ```python
 # backend/app/collectors/akshare_collector.py
+"""
+AKShare数据采集器.
+
+使用AKShare库采集金融数据.
+"""
+
 import akshare as ak
 import pandas as pd
-from typing import List, Dict
-from datetime import date, timedelta
+from typing import List, Dict, Optional
+from datetime import date
 from tenacity import retry, stop_after_attempt, wait_exponential
+import logging
 
-from app.config.logging import get_logger
+logger = logging.getLogger(__name__)
 
-logger = get_logger(__name__)
+
+# 货币对名称与代码映射
+SYMBOL_CODE_MAP = {
+    "美元人民币": "USDCNY",
+    "欧元美元": "EURUSD",
+    "英镑美元": "GBPUSD",
+    "美元日元": "USDJPY",
+    "澳元美元": "AUDUSD",
+    "美元加元": "USDCAD",
+    "美元瑞郎": "USDCHF",
+    "新西兰元美元": "NZDUSD",
+    "欧元英镑": "EURGBP",
+    "欧元日元": "EURJPY",
+    "英镑日元": "GBPJPY",
+    "澳元日元": "AUDJPY",
+}
 
 
 class AKShareCollector:
     """
     AKShare数据采集器.
 
-    使用AKShare库采集金融数据，支持重试机制.
+    使用AKShare库采集外汇数据，支持重试机制.
     """
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
-    async def collect_usdcnh(
+    async def collect_forex_hist(
         self,
-        start_date: date,
-        end_date: date,
+        symbol: str,
+        start_date: str,
+        end_date: str,
     ) -> List[Dict]:
         """
-        采集USDCNH汇率数据.
+        采集外汇日线行情数据.
 
         Args:
-            start_date: 开始日期
-            end_date: 结束日期
+            symbol: 货币对名称（中文，如"美元人民币"）
+            start_date: 开始日期，格式YYYYMMDD
+            end_date: 结束日期，格式YYYYMMDD
 
         Returns:
             List[Dict]: 汇率数据列表
@@ -983,52 +1043,121 @@ class AKShareCollector:
         Raises:
             Exception: 采集失败
         """
-        logger.info(f"开始采集USDCNH数据: {start_date} ~ {end_date}")
+        logger.info(f"开始采集外汇数据: {symbol}, {start_date} ~ {end_date}")
 
         try:
-            # 调用AKShare接口
-            df = ak.fx_spot_quote_usdcnh(
-                start_date=start_date.strftime("%Y%m%d"),
-                end_date=end_date.strftime("%Y%m%d"),
+            # 调用AKShare forex_hist接口
+            df = ak.forex_hist(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
             )
 
-            # 转换为字典列表
-            records = df.to_dict('records')
+            if df.empty:
+                logger.warning(f"采集数据为空: {symbol}")
+                return []
 
-            logger.info(f"成功采集{len(records)}条USDCNH数据")
-            return self._transform_data(records)
+            # 获取货币对英文代码
+            symbol_code = SYMBOL_CODE_MAP.get(symbol, symbol)
+
+            # 转换数据格式
+            records = self._transform_data(df, symbol, symbol_code)
+
+            logger.info(f"成功采集{len(records)}条{symbol}数据")
+            return records
 
         except Exception as e:
-            logger.error(f"采集USDCNH数据失败: {str(e)}")
+            logger.error(f"采集外汇数据失败: {str(e)}")
             raise
 
-    def _transform_data(self, records: List[Dict]) -> List[Dict]:
+    def _transform_data(
+        self,
+        df: pd.DataFrame,
+        symbol: str,
+        symbol_code: str,
+    ) -> List[Dict]:
         """
         转换数据格式.
 
-        将AKShare返回的数据转换为数据库存储格式.
+        将AKShare返回的DataFrame转换为数据库存储格式.
 
         Args:
-            records: 原始数据
+            df: 原始DataFrame
+            symbol: 货币对名称（中文）
+            symbol_code: 货币对代码（英文）
 
         Returns:
-            List[Dict]: 转换后的数据
+            List[Dict]: 转换后的数据列表
         """
-        transformed = []
-        for record in records:
-            transformed.append({
-                "symbol": "USDCNH",
-                "date": record.get("date"),
-                "open": record.get("open"),
-                "high": record.get("high"),
-                "low": record.get("low"),
-                "close": record.get("close"),
-                "volume": record.get("volume"),
-            })
-        return transformed
+        records = []
+        for _, row in df.iterrows():
+            record = {
+                "symbol": symbol,
+                "symbol_code": symbol_code,
+                "date": row.get("日期"),
+                "open": row.get("开盘价"),
+                "high": row.get("最高价"),
+                "low": row.get("最低价"),
+                "close": row.get("收盘价"),
+                "volume": row.get("成交量", 0) or 0,
+                "change_pct": row.get("涨跌幅"),
+                "change_amount": row.get("涨跌额"),
+                "amplitude": row.get("振幅"),
+            }
+            records.append(record)
+
+        return records
+
+    async def fetch_supported_symbols(self) -> List[Dict]:
+        """
+        获取支持的货币对列表.
+
+        通过调用forex_spot_quote接口获取实时行情，从中解析货币对列表.
+
+        Returns:
+            List[Dict]: 货币对列表，格式：[{"value": "美元人民币", "code": "USDCNY"}]
+        """
+        try:
+            # 获取人民币相关货币对
+            df_rmb = ak.forex_spot_quote(symbol="人民币")
+
+            # 解析货币对列表
+            symbols = []
+            seen = set()
+
+            for _, row in df_rmb.iterrows():
+                pair = row.get("货币对", "")
+                # 解析货币对名称（需要转换为中文名称）
+                symbol_name = self._parse_symbol_name(pair)
+                symbol_code = self._parse_symbol_code(pair)
+
+                if symbol_name and symbol_code and symbol_name not in seen:
+                    seen.add(symbol_name)
+                    symbols.append({
+                        "value": symbol_name,
+                        "code": symbol_code,
+                        "label": f"{symbol_name} ({symbol_code})",
+                    })
+
+            return symbols
+
+        except Exception as e:
+            logger.error(f"获取货币对列表失败: {str(e)}")
+            return []
+
+    def _parse_symbol_name(self, pair: str) -> Optional[str]:
+        """解析货币对中文名称."""
+        # 实现货币对名称解析逻辑
+        # 例如："人民币美元" -> 美元人民币（需反向）
+        pass
+
+    def _parse_symbol_code(self, pair: str) -> Optional[str]:
+        """解析货币对英文代码."""
+        # 实现代码解析逻辑
+        pass
 ```
 
-#### 7.2.2 数据采集服务
+#### 7.3.2 数据采集服务
 
 ```python
 # backend/app/services/fx_service.py
@@ -1131,7 +1260,7 @@ class FXDataService:
         return result.scalars().all()
 ```
 
-#### 7.2.3 APScheduler调度服务
+#### 7.3.3 APScheduler调度服务
 
 ```python
 # backend/app/services/scheduler_service.py
@@ -1233,14 +1362,18 @@ class SchedulerService:
 scheduler_service = SchedulerService()
 ```
 
-### 7.3 验收标准
+### 7.4 验收标准
 
 | 验收项 | 验收方式 | 通过标准 |
 |--------|---------|---------|
-| 数据采集 | 手动触发采集 | 数据入库成功 |
-| 任务调度 | 添加定时任务 | 任务按时执行 |
-| 数据查询 | GET /api/v1/fx/data | 返回汇率数据 |
-| 数据去重 | 重复采集同一天数据 | 数据不重复 |
+| 数据采集 | 手动触发采集任务 | forex_hist接口调用成功，数据入库 |
+| 任务调度 | 添加定时任务并启用 | APScheduler按时触发采集 |
+| 数据查询 | GET /api/v1/fx/data | 返回汇率数据（OHLC格式） |
+| 数据去重 | 重复采集同一天数据 | 数据不重复（ON CONFLICT更新） |
+| 货币对选择 | 选择不同货币对采集 | 不同货币对数据正确入库 |
+| 数据源配置 | Web端查看/编辑数据源 | 配置Schema正确展示 |
+| 采集任务配置 | Web端创建/启停任务 | 任务状态变更生效 |
+| 自动获取货币对 | 点击自动获取按钮 | 返回最新货币对列表并显示变更 |
 
 ---
 
