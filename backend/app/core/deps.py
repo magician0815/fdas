@@ -3,16 +3,59 @@
 
 Author: FDAS Team
 Created: 2026-04-03
-Updated: 2026-04-10 - 添加require_login依赖函数
+Updated: 2026-04-14 - 新增require_login依赖函数和WebSocket认证函数
 """
 
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status, Request, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import datetime
 
 from app.core.database import get_db
 from app.models.user import User
 from app.models.session import Session
+
+
+async def get_current_user_ws(
+    websocket: WebSocket,
+    db: AsyncSession,
+) -> str | None:
+    """
+    WebSocket连接的用户认证.
+
+    从WebSocket query参数或headers获取session_id并验证.
+
+    Args:
+        websocket: WebSocket连接对象
+        db: 数据库会话
+
+    Returns:
+        str | None: 用户ID（验证成功）或None（验证失败）
+    """
+    # 从query参数获取session_id
+    session_id = websocket.query_params.get("session_id")
+
+    # 如果query参数没有，尝试从headers获取
+    if not session_id:
+        session_id = websocket.headers.get("X-Session-ID")
+
+    if not session_id:
+        return None
+
+    # 验证session有效性（包含过期时间检查）
+    result = await db.execute(
+        select(Session).where(
+            Session.id == session_id,
+            Session.is_valid == True,
+            Session.expires_at > datetime.utcnow()
+        )
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        return None
+
+    return str(session.user_id)
 
 
 async def get_current_user(
@@ -36,9 +79,13 @@ async def get_current_user(
             detail="未登录",
         )
 
-    # 验证session有效性
+    # 验证session有效性（包含过期时间检查）
     result = await db.execute(
-        select(Session).where(Session.id == session_id, Session.is_valid == True)
+        select(Session).where(
+            Session.id == session_id,
+            Session.is_valid == True,
+            Session.expires_at > datetime.utcnow()
+        )
     )
     session = result.scalar_one_or_none()
 

@@ -376,3 +376,204 @@ INSERT INTO forex_symbols (code, name, base_currency, quote_currency, is_active)
 ('GBPJPY', '英镑日元', 'GBP', 'JPY', true),
 ('AUDJPY', '澳元日元', 'AUD', 'JPY', true)
 ON CONFLICT (code) DO NOTHING;
+
+-- ============================================
+-- 期货市场数据表（P6阶段实施）
+-- ============================================
+
+-- 期货品种基础信息表
+CREATE TABLE IF NOT EXISTS futures_varieties (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(20) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    exchange VARCHAR(20) NOT NULL,
+    market_id UUID REFERENCES markets(id),
+    contract_unit NUMERIC(10, 2),
+    min_price_tick NUMERIC(10, 4),
+    trading_months VARCHAR(50),
+    delivery_months VARCHAR(50),
+    delivery_method VARCHAR(20),
+    last_trade_day_rule TEXT,
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE futures_varieties IS '期货品种基础信息表';
+COMMENT ON COLUMN futures_varieties.id IS '品种唯一标识ID';
+COMMENT ON COLUMN futures_varieties.code IS '品种代码（如IF、IC、AU）';
+COMMENT ON COLUMN futures_varieties.name IS '品种名称（如沪深300股指期货）';
+COMMENT ON COLUMN futures_varieties.exchange IS '交易所代码（CFFEX/SHFE/DCE/CZCE）';
+COMMENT ON COLUMN futures_varieties.market_id IS '所属市场ID';
+COMMENT ON COLUMN futures_varieties.contract_unit IS '合约单位（元/点或吨/手）';
+COMMENT ON COLUMN futures_varieties.min_price_tick IS '最小变动价位';
+COMMENT ON COLUMN futures_varieties.trading_months IS '交易月份规则';
+COMMENT ON COLUMN futures_varieties.delivery_months IS '交割月份规则';
+COMMENT ON COLUMN futures_varieties.delivery_method IS '交割方式';
+COMMENT ON COLUMN futures_varieties.last_trade_day_rule IS '最后交易日规则描述';
+COMMENT ON COLUMN futures_varieties.description IS '品种描述说明';
+COMMENT ON COLUMN futures_varieties.is_active IS '是否启用';
+COMMENT ON COLUMN futures_varieties.created_at IS '创建时间';
+COMMENT ON COLUMN futures_varieties.updated_at IS '更新时间';
+
+-- 期货合约信息表
+CREATE TABLE IF NOT EXISTS futures_contracts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    variety_id UUID NOT NULL REFERENCES futures_varieties(id),
+    contract_code VARCHAR(20) UNIQUE NOT NULL,
+    contract_name VARCHAR(100) NOT NULL,
+    contract_month VARCHAR(10) NOT NULL,
+    year VARCHAR(4) NOT NULL,
+    month VARCHAR(2) NOT NULL,
+    listing_date DATE,
+    last_trade_date DATE NOT NULL,
+    delivery_date DATE,
+    is_main_contract BOOLEAN DEFAULT false,
+    main_start_date DATE,
+    main_end_date DATE,
+    open_interest NUMERIC(20, 0) DEFAULT 0,
+    datasource_id UUID REFERENCES datasources(id),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE futures_contracts IS '期货合约信息表';
+COMMENT ON COLUMN futures_contracts.id IS '合约唯一标识ID';
+COMMENT ON COLUMN futures_contracts.variety_id IS '关联品种ID';
+COMMENT ON COLUMN futures_contracts.contract_code IS '合约代码（如IF2401）';
+COMMENT ON COLUMN futures_contracts.contract_name IS '合约名称';
+COMMENT ON COLUMN futures_contracts.contract_month IS '合约月份标识';
+COMMENT ON COLUMN futures_contracts.year IS '合约年份';
+COMMENT ON COLUMN futures_contracts.month IS '合约月份（01-12）';
+COMMENT ON COLUMN futures_contracts.listing_date IS '上市日期';
+COMMENT ON COLUMN futures_contracts.last_trade_date IS '最后交易日/到期日';
+COMMENT ON COLUMN futures_contracts.delivery_date IS '交割日';
+COMMENT ON COLUMN futures_contracts.is_main_contract IS '是否为当前主力合约';
+COMMENT ON COLUMN futures_contracts.main_start_date IS '成为主力合约的开始日期';
+COMMENT ON COLUMN futures_contracts.main_end_date IS '作为主力合约的结束日期';
+COMMENT ON COLUMN futures_contracts.open_interest IS '当前持仓量';
+COMMENT ON COLUMN futures_contracts.datasource_id IS '数据来源ID';
+COMMENT ON COLUMN futures_contracts.is_active IS '是否启用（已到期设为False）';
+COMMENT ON COLUMN futures_contracts.created_at IS '创建时间';
+COMMENT ON COLUMN futures_contracts.updated_at IS '更新时间';
+
+-- 期货日线行情表（分区表）
+CREATE TABLE IF NOT EXISTS futures_daily (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    contract_id UUID NOT NULL REFERENCES futures_contracts(id),
+    variety_id UUID NOT NULL REFERENCES futures_varieties(id),
+    datasource_id UUID REFERENCES datasources(id),
+    date DATE NOT NULL,
+    open NUMERIC(10, 4),
+    high NUMERIC(10, 4),
+    low NUMERIC(10, 4),
+    close NUMERIC(10, 4),
+    settle_price NUMERIC(10, 4),
+    volume BIGINT DEFAULT 0,
+    open_interest BIGINT DEFAULT 0,
+    turnover NUMERIC(20, 2) DEFAULT 0,
+    change_pct NUMERIC(10, 4),
+    change_amount NUMERIC(10, 4),
+    amplitude NUMERIC(10, 4),
+    oi_change BIGINT DEFAULT 0,
+    is_main_data BOOLEAN DEFAULT false,
+    adjusted_price NUMERIC(10, 4),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(contract_id, date, datasource_id)
+) PARTITION BY RANGE (date);
+
+COMMENT ON TABLE futures_daily IS '期货日线行情数据表（按年分区）';
+COMMENT ON COLUMN futures_daily.id IS '数据唯一标识ID';
+COMMENT ON COLUMN futures_daily.contract_id IS '关联合约ID';
+COMMENT ON COLUMN futures_daily.variety_id IS '关联品种ID';
+COMMENT ON COLUMN futures_daily.datasource_id IS '数据来源ID';
+COMMENT ON COLUMN futures_daily.date IS '交易日期';
+COMMENT ON COLUMN futures_daily.open IS '开盘价';
+COMMENT ON COLUMN futures_daily.high IS '最高价';
+COMMENT ON COLUMN futures_daily.low IS '最低价';
+COMMENT ON COLUMN futures_daily.close IS '收盘价';
+COMMENT ON COLUMN futures_daily.settle_price IS '结算价';
+COMMENT ON COLUMN futures_daily.volume IS '成交量';
+COMMENT ON COLUMN futures_daily.open_interest IS '持仓量（OI）';
+COMMENT ON COLUMN futures_daily.turnover IS '成交金额';
+COMMENT ON COLUMN futures_daily.change_pct IS '涨跌幅（百分比）';
+COMMENT ON COLUMN futures_daily.change_amount IS '涨跌额';
+COMMENT ON COLUMN futures_daily.amplitude IS '振幅（百分比）';
+COMMENT ON COLUMN futures_daily.oi_change IS '持仓量变化';
+COMMENT ON COLUMN futures_daily.is_main_data IS '是否为主力合约数据';
+COMMENT ON COLUMN futures_daily.adjusted_price IS '挢月调整后价格';
+COMMENT ON COLUMN futures_daily.updated_at IS '数据更新时间';
+
+-- 创建期货日线分区表
+CREATE TABLE IF NOT EXISTS futures_daily_2024 PARTITION OF futures_daily
+    FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+
+CREATE TABLE IF NOT EXISTS futures_daily_2025 PARTITION OF futures_daily
+    FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+
+CREATE TABLE IF NOT EXISTS futures_daily_2026 PARTITION OF futures_daily
+    FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
+
+CREATE TABLE IF NOT EXISTS futures_daily_default PARTITION OF futures_daily
+    DEFAULT;
+
+-- ============================================
+-- 期货市场索引
+-- ============================================
+
+-- 期货品种表索引
+CREATE INDEX IF NOT EXISTS idx_futures_varieties_code ON futures_varieties(code);
+CREATE INDEX IF NOT EXISTS idx_futures_varieties_exchange ON futures_varieties(exchange);
+CREATE INDEX IF NOT EXISTS idx_futures_varieties_market ON futures_varieties(market_id);
+CREATE INDEX IF NOT EXISTS idx_futures_varieties_active ON futures_varieties(is_active);
+
+-- 期货合约表索引
+CREATE INDEX IF NOT EXISTS idx_futures_contracts_code ON futures_contracts(contract_code);
+CREATE INDEX IF NOT EXISTS idx_futures_contracts_variety ON futures_contracts(variety_id);
+CREATE INDEX IF NOT EXISTS idx_futures_contracts_main ON futures_contracts(is_main_contract);
+CREATE INDEX IF NOT EXISTS idx_futures_contracts_active ON futures_contracts(is_active);
+CREATE INDEX IF NOT EXISTS idx_futures_contracts_last_trade ON futures_contracts(last_trade_date);
+
+-- 期货日线表索引
+CREATE INDEX IF NOT EXISTS idx_futures_daily_contract_date ON futures_daily(contract_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_futures_daily_variety_date ON futures_daily(variety_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_futures_daily_date ON futures_daily(date DESC);
+CREATE INDEX IF NOT EXISTS idx_futures_daily_main ON futures_daily(is_main_data);
+CREATE INDEX IF NOT EXISTS idx_futures_daily_datasource ON futures_daily(datasource_id);
+
+-- ============================================
+-- 期货品种初始数据
+-- ============================================
+
+-- 插入主要期货品种数据
+INSERT INTO futures_varieties (code, name, exchange, market_id, contract_unit, min_price_tick, trading_months, delivery_method, last_trade_day_rule, description, is_active)
+SELECT
+    'IF', '沪深300股指期货', 'CFFEX', m.id, 300.00, 0.2, '当月、下月及随后两个季月', 'cash_delivery', '合约到期月份的第三个周五', '沪深300指数期货，现金交割', true
+FROM markets m WHERE m.code = 'futures_cn'
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO futures_varieties (code, name, exchange, market_id, contract_unit, min_price_tick, trading_months, delivery_method, last_trade_day_rule, description, is_active)
+SELECT
+    'IC', '中证500股指期货', 'CFFEX', m.id, 200.00, 0.2, '当月、下月及随后两个季月', 'cash_delivery', '合约到期月份的第三个周五', '中证500指数期货，现金交割', true
+FROM markets m WHERE m.code = 'futures_cn'
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO futures_varieties (code, name, exchange, market_id, contract_unit, min_price_tick, trading_months, delivery_method, last_trade_day_rule, description, is_active)
+SELECT
+    'IH', '上证50股指期货', 'CFFEX', m.id, 300.00, 0.2, '当月、下月及随后两个季月', 'cash_delivery', '合约到期月份的第三个周五', '上证50指数期货，现金交割', true
+FROM markets m WHERE m.code = 'futures_cn'
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO futures_varieties (code, name, exchange, market_id, contract_unit, min_price_tick, trading_months, delivery_method, last_trade_day_rule, description, is_active)
+SELECT
+    'AU', '黄金期货', 'SHFE', m.id, 1000.00, 0.01, '1-12月', 'physical_delivery', '合约月份的15日', '上海期货交易所黄金期货，实物交割', true
+FROM markets m WHERE m.code = 'futures_cn'
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO futures_varieties (code, name, exchange, market_id, contract_unit, min_price_tick, trading_months, delivery_method, last_trade_day_rule, description, is_active)
+SELECT
+    'CU', '铜期货', 'SHFE', m.id, 5.00, 10.00, '1-12月', 'physical_delivery', '合约月份的15日', '上海期货交易所铜期货，实物交割', true
+FROM markets m WHERE m.code = 'futures_cn'
+ON CONFLICT (code) DO NOTHING;

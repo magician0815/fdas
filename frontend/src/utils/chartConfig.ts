@@ -7,6 +7,10 @@
  * Created: 2026-04-14
  */
 
+// 引入股票市场工具
+import { MarketType, marketConfigs, getMarketConfig } from './stockUtils'
+import type { MarketConfig } from './stockUtils'
+
 /**
  * 图表主题配色.
  */
@@ -39,6 +43,14 @@ export const chartThemes = {
     // 十字光标
     crosshairColor: '#999999',
     crosshairTextColor: '#333333',
+    // 涨跌停配色
+    limitUpColor: '#ff6b6b',       // 涨停线 - 醒目红色
+    limitDownColor: '#4ade80',     // 跌停线 - 醒目绿色
+    limitUpBgColor: 'rgba(255, 107, 107, 0.1)', // 涨停背景
+    limitDownBgColor: 'rgba(74, 222, 128, 0.1)', // 跌停背景
+    // 除权除息配色
+    dividendColor: '#f59e0b',      // 除权除息标记 - 橙色
+    dividendBgColor: 'rgba(245, 158, 11, 0.1)', // 除权除息背景
   },
   // 夜间主题（深色背景）
   dark: {
@@ -68,16 +80,29 @@ export const chartThemes = {
     // 十字光标
     crosshairColor: '#666666',
     crosshairTextColor: '#e0e0e0',
+    // 涨跌停配色
+    limitUpColor: '#ff7875',       // 涨停线 - 醒目红色
+    limitDownColor: '#73d13d',     // 跌停线 - 醒目绿色
+    limitUpBgColor: 'rgba(255, 120, 117, 0.15)', // 涨停背景
+    limitDownBgColor: 'rgba(115, 209, 61, 0.15)', // 跌停背景
+    // 除权除息配色
+    dividendColor: '#faad14',      // 除权除息标记 - 橙色
+    dividendBgColor: 'rgba(250, 173, 20, 0.15)', // 除权除息背景
   }
 }
+
+// 导出市场工具类型和函数供外部使用
+export { MarketType, marketConfigs, getMarketConfig }
+export type { MarketConfig }
 
 /**
  * 获取K线图基础配置.
  *
  * @param theme - 主题名称 ('light' | 'dark')
+ * @param priceAxisType - 价格坐标轴类型 ('value' | 'log')
  * @returns ECharts配置对象
  */
-export function getKLineBaseOption(theme = 'light') {
+export function getKLineBaseOption(theme = 'light', priceAxisType = 'value') {
   const t = chartThemes[theme]
 
   return {
@@ -201,7 +226,7 @@ export function getKLineBaseOption(theme = 'light') {
     yAxis: [
       // 主图左Y轴（价格）
       {
-        type: 'value',
+        type: priceAxisType,  // 支持对数坐标
         gridIndex: 0,
         position: 'left',
         scale: true, // 自适应价格范围
@@ -210,7 +235,7 @@ export function getKLineBaseOption(theme = 'light') {
         axisLabel: {
           color: t.textSecondary,
           fontSize: 11,
-          formatter: (value) => value.toFixed(4)
+          formatter: (value) => priceAxisType === 'log' ? value.toFixed(2) : value.toFixed(4)
         },
         splitLine: {
           lineStyle: {
@@ -227,7 +252,7 @@ export function getKLineBaseOption(theme = 'light') {
       },
       // 主图右Y轴（价格）- 可选显示
       {
-        type: 'value',
+        type: priceAxisType,  // 支持对数坐标
         gridIndex: 0,
         position: 'right',
         scale: true,
@@ -334,6 +359,24 @@ export function getKLineBaseOption(theme = 'light') {
       },
       itemWidth: 15,
       itemHeight: 10
+    },
+    // 区间选择brush配置
+    brush: {
+      xAxisIndex: 0,
+      yAxisIndex: 0,
+      throttleType: 'debounce',
+      throttleDelay: 300,
+      brushStyle: {
+        borderWidth: 1,
+        borderColor: '#3b82f6',
+        color: 'rgba(59, 130, 246, 0.1)'
+      },
+      inBrush: {
+        color: 'rgba(59, 130, 246, 0.2)'
+      },
+      outOfBrush: {
+        colorAlpha: 0.5
+      }
     },
     series: []
   }
@@ -526,4 +569,175 @@ export function formatVolumeData(rawData) {
       }
     }
   })
+}
+
+/**
+ * 检测跳空缺口.
+ *
+ * 跳空缺口定义：
+ * - 向上跳空：今日最低价 > 昨日最高价
+ * - 向下跳空：今日最高价 < 昨日最低价
+ *
+ * @param rawData - 原始数据数组
+ * @returns 缺口标记数据数组
+ */
+export function detectGaps(rawData) {
+  if (!rawData || rawData.length < 2) return []
+
+  const gaps = []
+
+  for (let i = 1; i < rawData.length; i++) {
+    const prev = rawData[i - 1]
+    const curr = rawData[i]
+
+    const prevHigh = parseFloat(prev.high) || 0
+    const prevLow = parseFloat(prev.low) || 0
+    const currHigh = parseFloat(curr.high) || 0
+    const currLow = parseFloat(curr.low) || 0
+
+    // 向上跳空
+    if (currLow > prevHigh) {
+      gaps.push({
+        index: i,
+        type: 'gapUp',
+        startPrice: prevHigh,
+        endPrice: currLow,
+        date: curr.date
+      })
+    }
+
+    // 向下跳空
+    if (currHigh < prevLow) {
+      gaps.push({
+        index: i,
+        type: 'gapDown',
+        startPrice: currHigh,
+        endPrice: prevLow,
+        date: curr.date
+      })
+    }
+  }
+
+  return gaps
+}
+
+/**
+ * 检测长影线K线.
+ *
+ * 长影线定义：
+ * - 上影线 > 实体高度 * 2 且 收盘价 > 开盘价（阳线长上影）
+ * - 下影线 > 实体高度 * 2 且 收盘价 < 开盘价（阴线长下影）
+ *
+ * @param rawData - 原始数据数组
+ * @param threshold - 影线/实体比例阈值（默认2）
+ * @returns 长影线标记数据数组
+ */
+export function detectLongShadows(rawData, threshold = 2) {
+  if (!rawData || rawData.length < 1) return []
+
+  const longShadows = []
+
+  for (let i = 0; i < rawData.length; i++) {
+    const item = rawData[i]
+    const open = parseFloat(item.open) || 0
+    const close = parseFloat(item.close) || 0
+    const high = parseFloat(item.high) || 0
+    const low = parseFloat(item.low) || 0
+
+    const bodyHeight = Math.abs(close - open)
+    const upperShadow = high - Math.max(open, close)
+    const lowerShadow = Math.min(open, close) - low
+
+    // 阳线长上影线（看涨受阻）
+    if (close > open && upperShadow > bodyHeight * threshold && bodyHeight > 0) {
+      longShadows.push({
+        index: i,
+        type: 'longUpperShadow',
+        date: item.date
+      })
+    }
+
+    // 阴线长下影线（看跌受阻）
+    if (close < open && lowerShadow > bodyHeight * threshold && bodyHeight > 0) {
+      longShadows.push({
+        index: i,
+        type: 'longLowerShadow',
+        date: item.date
+      })
+    }
+  }
+
+  return longShadows
+}
+
+/**
+ * 生成缺口标记配置.
+ *
+ * @param gaps - 缺口数据数组
+ * @param theme - 主题名称
+ * @returns ECharts markPoint配置
+ */
+export function generateGapMarkPoints(gaps, theme = 'light') {
+  if (!gaps || gaps.length === 0) return null
+
+  const t = chartThemes[theme]
+
+  const data = gaps.map(gap => ({
+    coord: [gap.index, gap.type === 'gapUp' ? gap.endPrice : gap.startPrice],
+    symbol: gap.type === 'gapUp' ? 'arrow' : 'arrow',
+    symbolRotate: gap.type === 'gapUp' ? 0 : 180,
+    symbolSize: 12,
+    itemStyle: {
+      color: gap.type === 'gapUp' ? '#f59e0b' : '#8b5cf6'
+    },
+    label: {
+      show: false
+    }
+  }))
+
+  return {
+    data,
+    animation: false
+  }
+}
+
+/**
+ * 生成缺口标记线配置.
+ *
+ * @param gaps - 缺口数据数组
+ * @param rawData - 原始数据数组
+ * @returns ECharts markLine配置
+ */
+export function generateGapMarkLines(gaps, rawData) {
+  if (!gaps || gaps.length === 0) return null
+
+  const data = []
+
+  for (const gap of gaps) {
+    // 在缺口区域画矩形框标记
+    data.push({
+      name: gap.type === 'gapUp' ? '向上跳空' : '向下跳空',
+      xAxis: gap.index,
+      yAxis: gap.startPrice,
+      lineStyle: {
+        type: 'solid',
+        width: 1,
+        color: gap.type === 'gapUp' ? '#f59e0b' : '#8b5cf6',
+        opacity: 0.6
+      },
+      label: {
+        show: true,
+        formatter: gap.type === 'gapUp' ? '↑缺口' : '↓缺口',
+        position: 'insideEndTop',
+        fontSize: 10,
+        color: gap.type === 'gapUp' ? '#f59e0b' : '#8b5cf6'
+      }
+    })
+  }
+
+  return {
+    data,
+    animation: false,
+    symbol: 'none'
+  }
 }

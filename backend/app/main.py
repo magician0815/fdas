@@ -85,7 +85,7 @@ async def health_check():
 
 
 # 注册API路由
-from app.api.v1 import auth, users, fx_data, datasources, collection_tasks, markets, forex_symbols
+from app.api.v1 import auth, users, fx_data, datasources, collection_tasks, markets, forex_symbols, chart_settings, stocks
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户管理"])
@@ -94,3 +94,5 @@ app.include_router(datasources.router, prefix="/api/v1/datasources", tags=["数�
 app.include_router(forex_symbols.router, prefix="/api/v1/forex-symbols", tags=["外汇标的"])
 app.include_router(collection_tasks.router, prefix="/api/v1/collection-tasks", tags=["采集任务管理"])
 app.include_router(fx_data.router, prefix="/api/v1/fx", tags=["外汇行情数据"])
+app.include_router(chart_settings.router, prefix="/api/v1/chart", tags=["图表设置"])
+app.include_router(stocks.router, prefix="/api/v1", tags=["股票数据"])

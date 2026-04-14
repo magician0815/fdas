@@ -198,7 +198,44 @@ class TechnicalService:
         return {
             "ma": self.calculate_all_ma(data),
             "macd": self.calculate_macd(data),
+            "vol": self.calculate_volume_ma(data),
         }
+
+    def calculate_volume_ma(
+        self,
+        data: List[ForexDaily],
+        periods: List[int] = None,
+    ) -> Dict[str, List[Dict]]:
+        """
+        计算成交量均线.
+
+        Args:
+            data: 日线数据列表
+            periods: 周期列表（默认 [5, 10]）
+
+        Returns:
+            Dict[str, List[Dict]]: 成交量均线数据
+        """
+        if periods is None:
+            periods = [5, 10]
+
+        result = {}
+        volumes = [float(d.volume) if d.volume else 0 for d in data]
+
+        for period in periods:
+            key = f"vol{period}"
+            vol_values = []
+
+            if len(volumes) >= period:
+                for i in range(period - 1, len(volumes)):
+                    vol_ma = sum(volumes[i - period + 1:i + 1]) / period
+                    vol_values.append({
+                        "value": round(vol_ma, 0),
+                    })
+
+            result[key] = vol_values
+
+        return result
 
 
 # 全局服务实例

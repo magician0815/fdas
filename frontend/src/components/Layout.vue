@@ -19,6 +19,9 @@
         </transition>
       </el-main>
     </el-container>
+
+    <!-- 使用帮助按钮 -->
+    <HelpButton />
   </div>
 </template>
 
@@ -31,11 +34,12 @@
  *
  * Author: FDAS Team
  * Created: 2026-04-03
- * Updated: 2026-04-10 - 优化布局设计，添加动画过渡
+ * Updated: 2026-04-14 - 新增使用帮助按钮组件
  */
 import { ref, computed } from 'vue'
 import Sidebar from './Sidebar.vue'
 import Navbar from './Navbar.vue'
+import HelpButton from './HelpButton.vue'
 
 // 侧边栏折叠状态
 const isCollapsed = ref(false)

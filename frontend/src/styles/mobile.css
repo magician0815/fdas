@@ -1,0 +1,725 @@
+/**
+ * FDAS 移动端响应式样式.
+ *
+ * 针对移动设备优化的UI样式，包括：
+ * - 触摸友好的按钮和控件尺寸
+ * - 简化的工具栏布局
+ * - 适配不同屏幕尺寸的图表高度
+ * - 移动端专属的导航和菜单样式
+ *
+ * Author: FDAS Team
+ * Created: 2026-04-14
+ */
+
+/* ==================== 移动端基础变量 ==================== */
+
+:root {
+  /* 移动端专属变量 */
+  --fdas-mobile-toolbar-height: 50px;
+  --fdas-mobile-touch-target: 44px;  /* Apple推荐的触摸目标最小尺寸 */
+  --fdas-mobile-font-scale: 0.9;
+  --fdas-mobile-chart-min-height: 250px;
+  --fdas-mobile-chart-max-height: 400px;
+}
+
+/* ==================== 移动端全局适配 ==================== */
+
+/* 小屏幕设备（手机） */
+@media (max-width: 576px) {
+  :root {
+    --fdas-sidebar-width: 100%;  /* 全屏侧边栏 */
+    --fdas-header-height: 50px;
+    --fdas-spacing-lg: 12px;
+    --fdas-spacing-xl: 16px;
+    --fdas-spacing-2xl: 24px;
+  }
+
+  html, body {
+    font-size: 13px;
+  }
+
+  /* 防止横向滚动 */
+  html {
+    overflow-x: hidden;
+  }
+
+  body {
+    touch-action: pan-y;
+  }
+
+  /* 页面容器 */
+  .page-container {
+    padding: var(--fdas-spacing-sm);
+    min-height: calc(100vh - var(--fdas-mobile-toolbar-height));
+  }
+
+  /* 统计卡片 */
+  .stat-card {
+    padding: var(--fdas-spacing-md);
+  }
+
+  .stat-card .stat-value {
+    font-size: 20px;
+  }
+
+  /* 数据面板 */
+  .data-panel {
+    padding: var(--fdas-spacing-md);
+  }
+
+  .data-panel .panel-header {
+    flex-direction: column;
+    gap: var(--fdas-spacing-sm);
+    align-items: flex-start;
+  }
+
+  /* 图表容器 */
+  .chart-container {
+    height: var(--fdas-mobile-chart-min-height);
+    padding: var(--fdas-spacing-sm);
+  }
+
+  /* 表格适配 */
+  .el-table {
+    font-size: 12px;
+  }
+
+  .el-table th.el-table__cell {
+    padding: 8px 4px;
+  }
+
+  .el-table td.el-table__cell {
+    padding: 8px 4px;
+  }
+
+  /* Element Plus组件适配 */
+  .el-button {
+    min-height: var(--fdas-mobile-touch-target);
+    padding: 8px 12px;
+  }
+
+  .el-input__wrapper {
+    min-height: var(--fdas-mobile-touch-target);
+  }
+
+  .el-radio-button__inner {
+    padding: 8px 12px;
+  }
+
+  .el-select .el-input__wrapper {
+    min-height: var(--fdas-mobile-touch-target);
+  }
+
+  /* 日期选择器 */
+  .el-date-editor.el-input__wrapper {
+    width: 100% !important;
+    min-width: 100px;
+  }
+
+  /* 下拉菜单 */
+  .el-dropdown-menu {
+    max-width: 280px;
+  }
+
+  .el-dropdown-menu__item {
+    padding: 12px 16px;
+    min-height: var(--fdas-mobile-touch-target);
+  }
+
+  /* 消息提示 */
+  .el-message {
+    min-width: 200px;
+    max-width: 90vw;
+  }
+
+  /* 模态框适配 */
+  .el-dialog {
+    width: 90vw !important;
+    max-width: 90vw;
+    margin: 0 auto !important;
+  }
+
+  .el-dialog__header {
+    padding: 12px 16px;
+  }
+
+  .el-dialog__body {
+    padding: 16px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .el-dialog__footer {
+    padding: 12px 16px;
+  }
+
+  /* 表单适配 */
+  .el-form-item {
+    margin-bottom: 16px;
+  }
+
+  .el-form-item__label {
+    padding-bottom: 4px;
+  }
+
+  /* 分页适配 */
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .el-pagination .el-pager li {
+    min-width: 32px;
+    height: 32px;
+  }
+}
+
+/* 中等屏幕设备（平板） */
+@media (min-width: 577px) and (max-width: 768px) {
+  :root {
+    --fdas-sidebar-width: 240px;
+    --fdas-spacing-lg: 14px;
+    --fdas-spacing-xl: 20px;
+  }
+
+  .page-container {
+    padding: var(--fdas-spacing-md);
+  }
+
+  .stat-card .stat-value {
+    font-size: 22px;
+  }
+
+  .chart-container {
+    height: 300px;
+  }
+
+  /* 表格 */
+  .el-table th.el-table__cell,
+  .el-table td.el-table__cell {
+    padding: 10px 8px;
+  }
+}
+
+/* ==================== 图表组件移动端适配 ==================== */
+
+/* K线图工具栏移动端简化 */
+@media (max-width: 576px) {
+  .kline-chart-container .chart-toolbar {
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    height: auto;
+  }
+
+  .toolbar-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .toolbar-right {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-start;
+  }
+
+  .toolbar-right .el-radio-group {
+    flex: 1 1 auto;
+    min-width: 120px;
+  }
+
+  .toolbar-right .el-button {
+    flex: 0 0 auto;
+    min-width: 36px;
+    padding: 6px 8px;
+  }
+
+  .toolbar-right .el-dropdown {
+    flex: 0 0 auto;
+  }
+
+  /* 隐藏次要功能按钮 */
+  .toolbar-right .el-date-picker {
+    display: none;  /* 移动端通过其他方式定位日期 */
+  }
+
+  /* 光标锁定面板移动端适配 */
+  .cursor-lock-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    border-radius: 0;
+    border-top: 1px solid var(--fdas-border-color);
+    padding: 16px;
+    box-shadow: var(--fdas-shadow-lg);
+  }
+
+  .lock-data {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .lock-hint {
+    display: none;  /* 移动端隐藏键盘提示 */
+  }
+
+  /* 画线工具栏移动端适配 */
+  .drawing-toolbar-wrapper {
+    position: fixed;
+    top: auto;
+    bottom: 60px;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 100;
+  }
+
+  /* 区间统计面板移动端适配 */
+  .range-stats-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 50vh;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+/* ==================== 触摸手势优化 ==================== */
+
+/* 触摸设备专属样式 */
+@media (hover: none) and (pointer: coarse) {
+  /* 增大触摸目标 */
+  .el-button,
+  .el-radio-button__inner,
+  .el-checkbox__inner,
+  .el-switch__core {
+    min-height: var(--fdas-mobile-touch-target);
+  }
+
+  /* 移除hover效果，减少误触 */
+  .el-button:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .el-card:hover {
+    box-shadow: var(--fdas-shadow-card);
+  }
+
+  /* 图表触摸滚动 */
+  .chart-area {
+    touch-action: pan-x pan-y;
+  }
+
+  /* 禁用双击缩放 */
+  * {
+    touch-action: manipulation;
+  }
+
+  /* 滑块组件优化 */
+  .el-slider__button-wrapper {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* 选择器优化 */
+  .el-select-dropdown__item {
+    padding: 12px 16px;
+    min-height: var(--fdas-mobile-touch-target);
+  }
+}
+
+/* ==================== 移动端导航适配 ==================== */
+
+@media (max-width: 576px) {
+  /* 移动端底部导航 */
+  .mobile-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--fdas-mobile-toolbar-height);
+    background: var(--fdas-bg-card);
+    border-top: 1px solid var(--fdas-border-color);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 1000;
+    box-shadow: var(--fdas-shadow-md);
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 60px;
+    min-height: var(--fdas-mobile-touch-target);
+    color: var(--fdas-text-muted);
+    transition: color var(--fdas-transition-fast);
+  }
+
+  .mobile-nav-item.active {
+    color: var(--fdas-primary);
+  }
+
+  .mobile-nav-icon {
+    font-size: 20px;
+    margin-bottom: 2px;
+  }
+
+  .mobile-nav-label {
+    font-size: 11px;
+  }
+
+  /* 侧边栏变为全屏覆盖 */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100vh;
+    z-index: 999;
+    transition: left var(--fdas-transition-normal);
+    background: var(--fdas-bg-sidebar);
+  }
+
+  .sidebar.open {
+    left: 0;
+  }
+
+  /* 移动端侧边栏关闭按钮 */
+  .sidebar-close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: var(--fdas-mobile-touch-target);
+    height: var(--fdas-mobile-touch-target);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    color: var(--fdas-text-sidebar);
+  }
+
+  /* 头部导航简化 */
+  .header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--fdas-mobile-toolbar-height);
+    z-index: 1001;
+    background: var(--fdas-bg-header);
+    border-bottom: 1px solid var(--fdas-border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 12px;
+  }
+
+  .header-title {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* 内容区域留出底部导航空间 */
+  .main-content {
+    padding-bottom: calc(var(--fdas-mobile-toolbar-height) + 16px);
+  }
+
+  /* 菜单汉堡按钮 */
+  .menu-toggle {
+    width: var(--fdas-mobile-touch-target);
+    height: var(--fdas-mobile-touch-target);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .menu-toggle-icon {
+    width: 24px;
+    height: 2px;
+    background: var(--fdas-text-primary);
+    position: relative;
+    transition: background var(--fdas-transition-fast);
+  }
+
+  .menu-toggle-icon::before,
+  .menu-toggle-icon::after {
+    content: '';
+    position: absolute;
+    width: 24px;
+    height: 2px;
+    background: var(--fdas-text-primary);
+    left: 0;
+    transition: transform var(--fdas-transition-fast);
+  }
+
+  .menu-toggle-icon::before {
+    top: -8px;
+  }
+
+  .menu-toggle-icon::after {
+    bottom: -8px;
+  }
+
+  /* 菜单打开动画 */
+  .menu-toggle.open .menu-toggle-icon {
+    background: transparent;
+  }
+
+  .menu-toggle.open .menu-toggle-icon::before {
+    transform: rotate(45deg) translate(5px, 6px);
+  }
+
+  .menu-toggle.open .menu-toggle-icon::after {
+    transform: rotate(-45deg) translate(5px, -6px);
+  }
+}
+
+/* ==================== 移动端图表弹窗适配 ==================== */
+
+@media (max-width: 576px) {
+  /* 键盘精灵移动端适配 */
+  .keyboard-spirit-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+  }
+
+  .keyboard-spirit-search {
+    padding: 12px 16px;
+  }
+
+  .keyboard-spirit-results {
+    max-height: calc(100vh - 100px);
+    padding: 8px;
+  }
+
+  /* 导出面板移动端适配 */
+  .export-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    padding: 16px;
+  }
+
+  /* 自定义指标面板移动端适配 */
+  .custom-indicator-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    padding: 16px;
+    overflow-y: auto;
+  }
+
+  /* 多周期布局移动端适配 */
+  .multi-period-layout {
+    flex-direction: column;
+  }
+
+  .multi-period-chart {
+    height: var(--fdas-mobile-chart-min-height);
+    min-height: 200px;
+  }
+
+  /* 周期跳转面板移动端适配 */
+  .period-jumper-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    border-radius: 16px 16px 0 0;
+    padding: 16px;
+  }
+}
+
+/* ==================== 移动端特殊组件 ==================== */
+
+/* 移动端触摸反馈 */
+.touch-feedback {
+  position: relative;
+}
+
+.touch-feedback::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(45, 90, 247, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: width 0.2s, height 0.2s, opacity 0.3s;
+}
+
+.touch-feedback:active::after {
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+  transition: width 0s, height 0s, opacity 0s;
+}
+
+/* 移动端加载指示器 */
+.mobile-loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+/* 移动端下拉刷新指示器 */
+.pull-refresh-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fdas-bg-card);
+  transform: translateY(-100%);
+  transition: transform var(--fdas-transition-normal);
+  z-index: 1000;
+}
+
+.pull-refresh-indicator.visible {
+  transform: translateY(0);
+}
+
+/* 移动端快速操作栏 */
+.quick-actions-bar {
+  position: fixed;
+  bottom: calc(var(--fdas-mobile-toolbar-height) + 16px);
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+
+.quick-action-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fdas-primary);
+  color: #ffffff;
+  box-shadow: var(--fdas-shadow-md);
+  transition: transform var(--fdas-transition-fast);
+}
+
+.quick-action-btn:active {
+  transform: scale(0.95);
+}
+
+/* ==================== 横屏适配 ==================== */
+
+@media (max-width: 896px) and (orientation: landscape) {
+  :root {
+    --fdas-mobile-toolbar-height: 40px;
+    --fdas-mobile-chart-min-height: 180px;
+  }
+
+  .page-container {
+    padding: var(--fdas-spacing-xs);
+  }
+
+  .chart-container {
+    height: calc(100vh - 100px);
+    min-height: 150px;
+  }
+
+  .stat-card {
+    padding: var(--fdas-spacing-sm);
+  }
+
+  .stat-card .stat-value {
+    font-size: 18px;
+  }
+
+  /* 横屏时底部导航改为侧边 */
+  .mobile-nav {
+    right: 0;
+    left: auto;
+    top: 0;
+    bottom: 0;
+    width: 60px;
+    height: 100vh;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: 16px;
+    border-top: none;
+    border-left: 1px solid var(--fdas-border-color);
+  }
+
+  .main-content {
+    padding-bottom: 0;
+    padding-right: 76px;
+  }
+}
+
+/* ==================== 安全区域适配（iOS） ==================== */
+
+@supports (padding: max(0px)) {
+  @media (max-width: 576px) {
+    .mobile-nav {
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      height: calc(var(--fdas-mobile-toolbar-height) + max(16px, env(safe-area-inset-bottom)));
+    }
+
+    .header {
+      padding-top: max(8px, env(safe-area-inset-top));
+      height: calc(var(--fdas-mobile-toolbar-height) + max(8px, env(safe-area-inset-top)));
+    }
+
+    .page-container {
+      padding-left: max(var(--fdas-spacing-sm), env(safe-area-inset-left));
+      padding-right: max(var(--fdas-spacing-sm), env(safe-area-inset-right));
+    }
+  }
+}

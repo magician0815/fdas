@@ -23,6 +23,21 @@
           />
         </el-select>
 
+        <!-- 周期切换 -->
+        <el-select
+          v-model="periodType"
+          placeholder="选择周期"
+          class="period-select"
+          @change="handlePeriodChange"
+        >
+          <el-option
+            v-for="opt in periodOptions"
+            :key="opt.value"
+            :label="opt.label"
+            :value="opt.value"
+          />
+        </el-select>
+
         <!-- 刷新按钮 -->
         <el-button type="primary" @click="fetchData" :loading="loading">
           <el-icon><Refresh /></el-icon>
@@ -62,6 +77,8 @@
         :data="chartData"
         :indicators="indicatorsData"
         :symbolName="selectedSymbolName"
+        :symbolId="selectedSymbolId"
+        :loading="loading"
         @fetchData="fetchData"
         @themeChange="handleThemeChange"
       />
@@ -122,10 +139,28 @@
         </el-table>
       </div>
     </div>
+  <!-- 键盘精灵 -->
+    <KeyboardWizard
+      v-model="showKeyboardWizard"
+      :items="keyboardItems"
+      type="symbol"
+      @select="handleKeyboardSelect"
+    />
+
+    <!-- 指标精灵 -->
+    <IndicatorWizard
+      v-model="showIndicatorWizard"
+      :maPeriods="maPeriods"
+      :macdParams="macdParams"
+      :volPeriods="volPeriods"
+      @maChange="handleMAChange"
+      @macdChange="handleMACDChange"
+      @volChange="handleVOLChange"
+    />
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 /**
  * 数据分析页面.
  *
@@ -142,6 +177,8 @@ import { ElMessage } from 'element-plus'
 import { getFXData, getIndicators } from '@/api/fx_data'
 import { getForexSymbols } from '@/api/forex_symbols'
 import ProChart from '@/components/charts/ProChart.vue'
+import KeyboardWizard from '@/components/charts/KeyboardWizard.vue'
+import IndicatorWizard from '@/components/charts/IndicatorWizard.vue'
 
 const router = useRouter()
 
@@ -152,8 +189,34 @@ const indicatorsData = ref({ ma: {}, macd: { dif: [], dea: [], macd: [] } })
 const tableData = ref([])
 const symbols = ref([])
 
+// 周期类型状态
+const periodType = ref<string>(
+  localStorage.getItem('fdas_period_type') || 'daily'
+)
+
+// 周期类型选项
+const periodOptions = [
+  { value: 'daily', label: '日线' },
+  { value: 'weekly', label: '周线' },
+  { value: 'monthly', label: '月线' }
+]
+
+// 处理周期切换
+const handlePeriodChange = (period: string) => {
+  periodType.value = period
+  localStorage.setItem('fdas_period_type', period)
+  fetchData()
+}
+
 // 选择状态
 const selectedSymbolId = ref(null)
+const showKeyboardWizard = ref(false)
+const showIndicatorWizard = ref(false)
+
+// 指标参数状态
+const maPeriods = ref<string[]>(['5', '10', '20', '60'])
+const macdParams = ref({ fast: 12, slow: 26, signal: 9 })
+const volPeriods = ref<string[]>(['5', '10'])
 
 // 图表组件ref
 const proChartRef = ref(null)
@@ -213,6 +276,15 @@ const amplitude = computed(() => {
   return null
 })
 
+// 键盘精灵数据
+const keyboardItems = computed(() => {
+  return symbols.value.map(s => ({
+    id: s.id,
+    name: s.name,
+    code: s.code,
+  }))
+})
+
 // 格式化价格
 const formatPrice = (value) => {
   if (!value) return '--'
@@ -255,15 +327,22 @@ const fetchData = async () => {
 
   loading.value = true
   try {
-    // 获取日线数据（使用symbol_id参数）
-    const dataRes = await getFXData({ symbol_id: selectedSymbolId.value, limit: 100 })
+    // 获取行情数据（添加周期参数）
+    const dataRes = await getFXData({
+      symbol_id: selectedSymbolId.value,
+      period: periodType.value,
+      limit: periodType.value === 'daily' ? 100 : (periodType.value === 'weekly' ? 52 : 24)
+    })
     if (dataRes.success) {
       chartData.value = dataRes.data || []
       tableData.value = (dataRes.data || []).slice(0, 20)
     }
 
-    // 获取技术指标
-    const indicatorsRes = await getIndicators({ symbol_id: selectedSymbolId.value })
+    // 获取技术指标（添加周期参数）
+    const indicatorsRes = await getIndicators({
+      symbol_id: selectedSymbolId.value,
+      period: periodType.value
+    })
     if (indicatorsRes.success) {
       indicatorsData.value = indicatorsRes.data || { ma: {}, macd: { dif: [], dea: [], macd: [] } }
     }
@@ -277,6 +356,43 @@ const fetchData = async () => {
 // 处理主题变化
 const handleThemeChange = (theme) => {
   // 主题变化处理，可保存到用户配置
+}
+
+// 处理键盘精灵选择
+const handleKeyboardSelect = (item) => {
+  selectedSymbolId.value = item.id
+}
+
+// 处理键盘快捷键
+const handleKeydown = (e) => {
+  // Ctrl+K 打开键盘精灵
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault()
+    showKeyboardWizard.value = true
+  }
+  // Ctrl+I 打开指标精灵
+  if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+    e.preventDefault()
+    showIndicatorWizard.value = true
+  }
+}
+
+// 处理MA变化
+const handleMAChange = (periods: string[]) => {
+  maPeriods.value = periods
+  // TODO: 重新获取指标数据或通知ProChart
+}
+
+// 处理MACD变化
+const handleMACDChange = (params: { fast: number; slow: number; signal: number }) => {
+  macdParams.value = params
+  // TODO: 重新获取指标数据或通知ProChart
+}
+
+// 处理VOL变化
+const handleVOLChange = (periods: string[]) => {
+  volPeriods.value = periods
+  // TODO: 重新获取指标数据或通知ProChart
 }
 
 // 导出数据
@@ -303,10 +419,14 @@ const exportData = () => {
 
 onMounted(() => {
   fetchSymbols()
+  // 注册键盘快捷键
+  window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   proChartRef.value?.cleanup()
+  // 移除键盘快捷键监听
+  window.removeEventListener('keydown', handleKeydown)
 })
 
 // 标的选择变化时获取数据

@@ -2,10 +2,11 @@
 外汇日线数据API.
 
 提供外汇日线行情数据查询和技术指标计算功能.
+支持周期切换（日线/周线/月线）.
 
 Author: FDAS Team
 Created: 2026-04-03
-Updated: 2026-04-10 - 适配ForexDaily模型
+Updated: 2026-04-14 - 新增周期切换功能（daily/weekly/monthly）
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -20,6 +21,7 @@ from app.models.user import User
 from app.schemas.common import Response
 from app.services.forex_daily_service import forex_daily_service
 from app.services.technical_service import technical_service
+from app.services.period_aggregation_service import PeriodAggregationService, PeriodType
 
 router = APIRouter()
 
@@ -59,34 +61,67 @@ async def get_fx_data(
     symbol_code: str = Query(default="USDCNY", description="货币对代码"),
     start_date: Optional[date] = Query(default=None, description="开始日期"),
     end_date: Optional[date] = Query(default=None, description="结束日期"),
+    period: str = Query(default="daily", description="周期类型（daily/weekly/monthly）"),
     limit: int = Query(default=1000, le=1000, description="数据条数限制"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_login),
 ):
     """
-    获取外汇日线数据.
+    获取外汇行情数据.
 
-    返回指定时间范围内的日线数据，最多1000条.
+    返回指定时间范围内的行情数据，最多1000条.
     支持通过symbol_id或symbol_code查询.
+    支持周期切换：daily（日线）/ weekly（周线）/ monthly（月线）
     """
-    # 默认查询最近30天
+    # 默认查询时间范围根据周期调整
     if not start_date:
-        start_date = date.today() - timedelta(days=30)
+        if period == "daily":
+            start_date = date.today() - timedelta(days=30)
+        elif period == "weekly":
+            start_date = date.today() - timedelta(days=180)  # 约26周
+        elif period == "monthly":
+            start_date = date.today() - timedelta(days=365)  # 约12月
+        else:
+            start_date = date.today() - timedelta(days=30)
+
     if not end_date:
         end_date = date.today()
 
-    data = await forex_daily_service.get_forex_daily(
+    # 获取日线数据（升序，用于聚合计算）
+    raw_data = await forex_daily_service.get_forex_daily_asc(
         db=db,
         symbol_id=symbol_id,
         symbol_code=symbol_code,
         start_date=start_date,
         end_date=end_date,
-        limit=limit,
+        limit=500,  # 获取足够数据用于聚合
     )
+
+    if not raw_data:
+        return Response(
+            success=True,
+            data=[],
+        )
+
+    # 转换为字典列表
+    daily_items = [ForexDailyItem(d).to_dict() for d in raw_data]
+
+    # 根据周期类型聚合数据
+    if period == PeriodType.DAILY:
+        result_data = daily_items
+    elif period == PeriodType.WEEKLY or period == PeriodType.MONTHLY:
+        aggregation_service = PeriodAggregationService()
+        result_data = aggregation_service.aggregate(daily_items, period)
+    else:
+        result_data = daily_items
+
+    # 限制返回条数
+    result_data = result_data[-limit:] if len(result_data) > limit else result_data
 
     return Response(
         success=True,
-        data=[ForexDailyItem(d).to_dict() for d in data],
+        data=result_data,
+        meta={"period": period, "total": len(result_data)}
     )
 
 
@@ -129,6 +164,7 @@ async def get_indicators(
     symbol_code: str = Query(default="USDCNY", description="货币对代码"),
     start_date: Optional[date] = Query(default=None, description="开始日期"),
     end_date: Optional[date] = Query(default=None, description="结束日期"),
+    period: str = Query(default="daily", description="周期类型（daily/weekly/monthly）"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_login),
 ):
@@ -137,33 +173,57 @@ async def get_indicators(
 
     返回MA、MACD等技术指标数据.
     支持通过symbol_id或symbol_code查询.
+    支持周期切换：daily（日线）/ weekly（周线）/ monthly（月线）
     """
-    # 默认查询最近100天（技术指标需要足够数据）
+    # 默认查询时间范围根据周期调整（技术指标需要足够数据）
     if not start_date:
-        start_date = date.today() - timedelta(days=100)
+        if period == "daily":
+            start_date = date.today() - timedelta(days=100)
+        elif period == "weekly":
+            start_date = date.today() - timedelta(days=365)  # 约52周
+        elif period == "monthly":
+            start_date = date.today() - timedelta(days=730)  # 约24月
+        else:
+            start_date = date.today() - timedelta(days=100)
+
     if not end_date:
         end_date = date.today()
 
-    # 获取日线数据（升序，用于技术指标计算）
-    data = await forex_daily_service.get_forex_daily_asc(
+    # 获取日线数据（升序）
+    raw_data = await forex_daily_service.get_forex_daily_asc(
         db=db,
         symbol_id=symbol_id,
         symbol_code=symbol_code,
         start_date=start_date,
         end_date=end_date,
-        limit=100,
+        limit=200,  # 获取足够数据用于聚合和指标计算
     )
 
-    if not data:
+    if not raw_data:
         return Response(
             success=True,
-            data={"ma": {}, "macd": {"dif": [], "dea": [], "macd": []}},
+            data={"ma": {}, "macd": {"dif": [], "dea": [], "macd": []}, "vol": {}},
         )
 
-    # 计算技术指标
-    indicators = technical_service.calculate_all_indicators(data)
+    # 转换为字典列表
+    daily_items = [ForexDailyItem(d).to_dict() for d in raw_data]
 
+    # 根据周期聚合并计算指标
+    aggregation_service = PeriodAggregationService()
+    result = aggregation_service.aggregate_with_indicators(
+        daily_items,
+        period,
+        ma_periods=[5, 10, 20, 60],
+        macd_params={"fast": 12, "slow": 26, "signal": 9}
+    )
+
+    # 重新组织响应格式
     return Response(
         success=True,
-        data=indicators,
+        data={
+            "data": result["data"],
+            "ma": result["ma"],
+            "macd": result["macd"],
+        },
+        meta={"period": period}
     )
