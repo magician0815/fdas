@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="header-left">
         <h1 class="page-title">数据分析</h1>
-        <p class="page-subtitle">外汇行情数据可视化</p>
+        <p class="page-subtitle">专业行情走势</p>
       </div>
       <div class="header-right">
         <!-- 货币对选择 -->
@@ -55,43 +55,16 @@
       </div>
     </div>
 
-    <!-- 图表区域 -->
-    <div class="chart-section">
-      <!-- K线图 -->
-      <div class="chart-panel">
-        <div class="panel-header">
-          <h2 class="panel-title">价格走势图</h2>
-          <div class="panel-actions">
-            <el-radio-group v-model="chartType" size="small" @change="renderChart">
-              <el-radio-button label="line">折线图</el-radio-button>
-              <el-radio-button label="candle">K线图</el-radio-button>
-            </el-radio-group>
-          </div>
-        </div>
-        <div class="chart-container" ref="mainChartRef">
-          <el-empty v-if="!chartData.length" description="暂无数据">
-            <el-button type="primary" size="small" @click="$router.push('/collection')">
-              配置采集任务
-            </el-button>
-          </el-empty>
-        </div>
-      </div>
-
-      <!-- 技术指标图 -->
-      <div class="chart-panel indicators">
-        <div class="panel-header">
-          <h2 class="panel-title">技术指标</h2>
-          <div class="panel-actions">
-            <el-checkbox-group v-model="selectedIndicators" size="small" @change="renderIndicatorChart">
-              <el-checkbox-button label="ma">MA均线</el-checkbox-button>
-              <el-checkbox-button label="macd">MACD</el-checkbox-button>
-            </el-checkbox-group>
-          </div>
-        </div>
-        <div class="chart-container indicators-chart" ref="indicatorChartRef">
-          <el-empty v-if="!indicatorsData.ma?.length" description="暂无技术指标数据" :image-size="80" />
-        </div>
-      </div>
+    <!-- 专业图表区域 -->
+    <div class="pro-chart-section">
+      <ProChart
+        ref="proChartRef"
+        :data="chartData"
+        :indicators="indicatorsData"
+        :symbolName="selectedSymbolName"
+        @fetchData="fetchData"
+        @themeChange="handleThemeChange"
+      />
     </div>
 
     <!-- 数据表格区域 -->
@@ -156,41 +129,42 @@
 /**
  * 数据分析页面.
  *
- * 展示K线图、均线图、MACD图和历史数据表格.
+ * 展示专业行情走势图表和历史数据表格.
  *
  * Author: FDAS Team
  * Created: 2026-04-03
- * Updated: 2026-04-11 - 完整ECharts图表实现
+ * Updated: 2026-04-14 - 使用专业图表组件ProChart
  */
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import * as echarts from 'echarts'
 import { getFXData, getIndicators } from '@/api/fx_data'
 import { getForexSymbols } from '@/api/forex_symbols'
+import ProChart from '@/components/charts/ProChart.vue'
 
 const router = useRouter()
 
 // 数据状态
 const loading = ref(false)
 const chartData = ref([])
-const indicatorsData = ref({ ma: [], macd: {} })
+const indicatorsData = ref({ ma: {}, macd: { dif: [], dea: [], macd: [] } })
 const tableData = ref([])
 const symbols = ref([])
 
 // 选择状态
 const selectedSymbolId = ref(null)
-const chartType = ref('line')
-const selectedIndicators = ref(['ma'])
 
-// 图表实例
-const mainChartRef = ref(null)
-const indicatorChartRef = ref(null)
-let mainChart = null
-let indicatorChart = null
+// 图表组件ref
+const proChartRef = ref(null)
 
-// 统计数据
+// 计算属性
+const selectedSymbolName = computed(() => {
+  if (!selectedSymbolId.value) return ''
+  const symbol = symbols.value.find(s => s.id === selectedSymbolId.value)
+  return symbol ? symbol.name : ''
+})
+
 const currentPrice = computed(() => {
   if (chartData.value.length) {
     const latest = chartData.value[chartData.value.length - 1]
@@ -281,7 +255,7 @@ const fetchData = async () => {
 
   loading.value = true
   try {
-    // 获取日线数据
+    // 获取日线数据（使用symbol_id参数）
     const dataRes = await getFXData({ symbol_id: selectedSymbolId.value, limit: 100 })
     if (dataRes.success) {
       chartData.value = dataRes.data || []
@@ -291,13 +265,8 @@ const fetchData = async () => {
     // 获取技术指标
     const indicatorsRes = await getIndicators({ symbol_id: selectedSymbolId.value })
     if (indicatorsRes.success) {
-      indicatorsData.value = indicatorsRes.data || { ma: [], macd: {} }
+      indicatorsData.value = indicatorsRes.data || { ma: {}, macd: { dif: [], dea: [], macd: [] } }
     }
-
-    // 渲染图表
-    await nextTick()
-    renderChart()
-    renderIndicatorChart()
   } catch (e) {
     ElMessage.error('获取数据失败')
   } finally {
@@ -305,158 +274,9 @@ const fetchData = async () => {
   }
 }
 
-// 渲染主图表
-const renderChart = () => {
-  if (!mainChartRef.value || !chartData.value.length) {
-    if (mainChart) {
-      mainChart.clear()
-    }
-    return
-  }
-
-  if (!mainChart) {
-    mainChart = echarts.init(mainChartRef.value)
-  }
-
-  const dates = chartData.value.map(d => d.date)
-  const closes = chartData.value.map(d => parseFloat(d.close) || 0)
-  const highs = chartData.value.map(d => parseFloat(d.high) || 0)
-  const lows = chartData.value.map(d => parseFloat(d.low) || 0)
-  const opens = chartData.value.map(d => parseFloat(d.open) || 0)
-
-  let option
-
-  if (chartType.value === 'candle') {
-    // K线图
-    const klineData = chartData.value.map(d => [
-      parseFloat(d.open) || 0,
-      parseFloat(d.close) || 0,
-      parseFloat(d.low) || 0,
-      parseFloat(d.high) || 0
-    ])
-
-    option = {
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'cross' }
-      },
-      legend: { data: ['K线'] },
-      grid: { left: '10%', right: '10%', bottom: '15%' },
-      xAxis: {
-        type: 'category',
-        data: dates,
-        boundaryGap: false,
-        axisLine: { onZero: false }
-      },
-      yAxis: {
-        type: 'value',
-        scale: true,
-        splitArea: { show: true }
-      },
-      dataZoom: [
-        { type: 'inside', start: 50, end: 100 },
-        { show: true, type: 'slider', top: '90%', start: 50, end: 100 }
-      ],
-      series: [
-        {
-          name: 'K线',
-          type: 'candlestick',
-          data: klineData,
-          itemStyle: {
-            color: '#ef4444',
-            color0: '#22c55e',
-            borderColor: '#ef4444',
-            borderColor0: '#22c55e'
-          }
-        }
-      ]
-    }
-  } else {
-    // 折线图
-    option = {
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['收盘价'] },
-      grid: { left: '10%', right: '10%', bottom: '15%' },
-      xAxis: { type: 'category', data: dates, boundaryGap: false },
-      yAxis: { type: 'value', scale: true },
-      dataZoom: [
-        { type: 'inside', start: 50, end: 100 },
-        { show: true, type: 'slider', top: '90%', start: 50, end: 100 }
-      ],
-      series: [
-        {
-          name: '收盘价',
-          type: 'line',
-          data: closes,
-          smooth: true,
-          lineStyle: { width: 2, color: '#2d5af7' },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(45, 90, 247, 0.3)' },
-              { offset: 1, color: 'rgba(45, 90, 247, 0.05)' }
-            ])
-          }
-        }
-      ]
-    }
-  }
-
-  // 添加MA均线（如果选择）
-  if (selectedIndicators.value.includes('ma') && indicatorsData.value.ma?.length) {
-    const maData = indicatorsData.value.ma
-    option.legend.data.push('MA5')
-    option.series.push({
-      name: 'MA5',
-      type: 'line',
-      data: maData.map(m => m.value),
-      lineStyle: { width: 1, color: '#f59e0b' },
-      symbol: 'none'
-    })
-  }
-
-  mainChart.setOption(option)
-}
-
-// 渲染指标图表
-const renderIndicatorChart = () => {
-  if (!indicatorChartRef.value) {
-    return
-  }
-
-  if (!indicatorChart) {
-    indicatorChart = echarts.init(indicatorChartRef.value)
-  }
-
-  if (!indicatorsData.value.ma?.length && !indicatorsData.value.macd?.macd?.length) {
-    indicatorChart.clear()
-    return
-  }
-
-  const dates = chartData.value.map(d => d.date)
-
-  const option = {
-    tooltip: { trigger: 'axis' },
-    legend: { data: selectedIndicators.value.includes('ma') ? ['MA'] : [] },
-    grid: { left: '10%', right: '10%', bottom: '15%' },
-    xAxis: { type: 'category', data: dates, boundaryGap: false },
-    yAxis: { type: 'value' },
-    dataZoom: [{ type: 'inside', start: 50, end: 100 }],
-    series: []
-  }
-
-  // MA均线
-  if (selectedIndicators.value.includes('ma') && indicatorsData.value.ma?.length) {
-    option.series.push({
-      name: 'MA',
-      type: 'line',
-      data: indicatorsData.value.ma.map(m => m.value),
-      lineStyle: { width: 2, color: '#2d5af7' },
-      symbol: 'circle',
-      symbolSize: 4
-    })
-  }
-
-  indicatorChart.setOption(option)
+// 处理主题变化
+const handleThemeChange = (theme) => {
+  // 主题变化处理，可保存到用户配置
 }
 
 // 导出数据
@@ -481,21 +301,12 @@ const exportData = () => {
   ElMessage.success('数据导出成功')
 }
 
-// 窗口大小变化时重绘图表
-const handleResize = () => {
-  mainChart?.resize()
-  indicatorChart?.resize()
-}
-
 onMounted(() => {
   fetchSymbols()
-  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  mainChart?.dispose()
-  indicatorChart?.dispose()
+  proChartRef.value?.cleanup()
 })
 
 // 标的选择变化时获取数据
@@ -580,43 +391,13 @@ watch(selectedSymbolId, (val) => {
 .stat-value.positive { color: var(--fdas-success); }
 .stat-value.negative { color: var(--fdas-danger); }
 
-/* 图表区域 */
-.chart-section {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--fdas-spacing-lg);
-  margin-bottom: var(--fdas-spacing-lg);
-}
-
-.chart-panel {
+/* 专业图表区域 */
+.pro-chart-section {
   background: var(--fdas-bg-card);
   border-radius: var(--fdas-radius-lg);
-  padding: var(--fdas-spacing-lg);
   box-shadow: var(--fdas-shadow-card);
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--fdas-spacing-md);
-}
-
-.panel-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--fdas-text-primary);
-  margin: 0;
-}
-
-.chart-container {
-  height: 350px;
-  background: var(--fdas-gray-50);
-  border-radius: var(--fdas-radius-md);
-}
-
-.chart-container.indicators-chart {
-  height: 280px;
+  height: 500px;
+  margin-bottom: var(--fdas-spacing-lg);
 }
 
 /* 数据表格区域 */
@@ -642,8 +423,8 @@ watch(selectedSymbolId, (val) => {
 
 /* 响应式设计 */
 @media (max-width: 1200px) {
-  .chart-section {
-    grid-template-columns: 1fr;
+  .pro-chart-section {
+    height: 400px;
   }
 }
 
@@ -668,6 +449,10 @@ watch(selectedSymbolId, (val) => {
 
   .stat-card.mini {
     min-width: calc(50% - var(--fdas-spacing-sm));
+  }
+
+  .pro-chart-section {
+    height: 350px;
   }
 }
 </style>

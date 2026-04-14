@@ -55,6 +55,7 @@ class ForexDailyItem:
 
 @router.get("/data", response_model=Response)
 async def get_fx_data(
+    symbol_id: Optional[UUID] = Query(default=None, description="货币对ID"),
     symbol_code: str = Query(default="USDCNY", description="货币对代码"),
     start_date: Optional[date] = Query(default=None, description="开始日期"),
     end_date: Optional[date] = Query(default=None, description="结束日期"),
@@ -66,6 +67,7 @@ async def get_fx_data(
     获取外汇日线数据.
 
     返回指定时间范围内的日线数据，最多1000条.
+    支持通过symbol_id或symbol_code查询.
     """
     # 默认查询最近30天
     if not start_date:
@@ -75,6 +77,7 @@ async def get_fx_data(
 
     data = await forex_daily_service.get_forex_daily(
         db=db,
+        symbol_id=symbol_id,
         symbol_code=symbol_code,
         start_date=start_date,
         end_date=end_date,
@@ -122,6 +125,7 @@ async def get_fx_data_by_id(
 
 @router.get("/indicators", response_model=Response)
 async def get_indicators(
+    symbol_id: Optional[UUID] = Query(default=None, description="货币对ID"),
     symbol_code: str = Query(default="USDCNY", description="货币对代码"),
     start_date: Optional[date] = Query(default=None, description="开始日期"),
     end_date: Optional[date] = Query(default=None, description="结束日期"),
@@ -132,6 +136,7 @@ async def get_indicators(
     获取技术指标.
 
     返回MA、MACD等技术指标数据.
+    支持通过symbol_id或symbol_code查询.
     """
     # 默认查询最近100天（技术指标需要足够数据）
     if not start_date:
@@ -142,6 +147,7 @@ async def get_indicators(
     # 获取日线数据（升序，用于技术指标计算）
     data = await forex_daily_service.get_forex_daily_asc(
         db=db,
+        symbol_id=symbol_id,
         symbol_code=symbol_code,
         start_date=start_date,
         end_date=end_date,
@@ -151,7 +157,7 @@ async def get_indicators(
     if not data:
         return Response(
             success=True,
-            data={"ma": [], "macd": []},
+            data={"ma": {}, "macd": {"dif": [], "dea": [], "macd": []}},
         )
 
     # 计算技术指标
