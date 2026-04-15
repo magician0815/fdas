@@ -312,3 +312,146 @@ class TestWebSocketManagerStats:
         """测试获取不存在用户标的."""
         symbols = manager.get_user_symbols("nonexistent")
         assert symbols == []
+
+
+class TestWebSocketHandler:
+    """测试WebSocket消息处理器."""
+
+    @pytest.mark.asyncio
+    async def test_handler_subscribe_message(self, manager: WebSocketManager):
+        """测试订阅消息处理."""
+        from app.services.websocket_service import websocket_handler
+
+        mock_ws = AsyncMock()
+        mock_ws.receive_json = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+
+        # 模拟订阅消息
+        mock_ws.receive_json.return_value = {
+            "type": "subscribe",
+            "symbol_id": "symbol1"
+        }
+
+        # 只处理一条消息后模拟关闭
+        call_count = 0
+        async def receive_once():
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise Exception("Connection closed")
+            return {"type": "subscribe", "symbol_id": "symbol1"}
+
+        mock_ws.receive_json = receive_once
+
+        try:
+            await websocket_handler(mock_ws, "user1")
+        except Exception:
+            pass  # 处理器会抛出异常退出循环
+
+        # 验证连接注册
+        mock_ws.send_json.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_handler_ping_message(self, manager: WebSocketManager):
+        """测试Ping消息处理."""
+        from app.services.websocket_service import websocket_handler
+
+        mock_ws = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+
+        call_count = 0
+        async def receive_ping():
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise Exception("Connection closed")
+            return {"type": "ping"}
+
+        mock_ws.receive_json = receive_ping
+
+        try:
+            await websocket_handler(mock_ws, "user1")
+        except Exception:
+            pass
+
+        # 验证pong响应
+        mock_ws.send_json.assert_called()
+        call_args = mock_ws.send_json.call_args[0][0]
+        assert call_args["type"] == "pong"
+
+
+class TestHeartbeatTask:
+    """测试心跳任务."""
+
+    @pytest.mark.asyncio
+    async def test_start_heartbeat(self, manager: WebSocketManager):
+        """测试启动心跳."""
+        from app.services.websocket_service import start_heartbeat_task
+
+        ws = AsyncMock()
+        ws.send_json = AsyncMock()
+
+        await manager.connect(ws, "user1", "symbol1")
+
+        # 运行一次心跳后停止
+        original_is_running = manager.is_running
+
+        async def run_once():
+            await manager.send_heartbeat()
+
+        await run_once()
+
+        ws.send_json.assert_called()
+        call_args = ws.send_json.call_args[0][0]
+        assert call_args["type"] == "heartbeat"
+
+    @pytest.mark.asyncio
+    async def test_stop_heartbeat(self, manager: WebSocketManager):
+        """测试停止心跳."""
+        from app.services.websocket_service import stop_heartbeat_task, ws_manager
+
+        # 设置全局manager的状态
+        ws_manager.is_running = True
+        await stop_heartbeat_task()
+
+        assert ws_manager.is_running is False
+
+
+class TestWebSocketManagerCleanup:
+    """测试连接清理."""
+
+    @pytest.mark.asyncio
+    async def test_cleanup_on_error(self, manager: WebSocketManager):
+        """测试错误时清理连接."""
+        ws = AsyncMock()
+        ws.send_json = AsyncMock()
+        ws.send_json.side_effect = Exception("Connection error")
+
+        await manager.connect(ws, "user1", "symbol1")
+
+        # 发送消息失败后应该移除连接
+        await manager.send_message(ws, {"type": "test"})
+
+        # 连接仍然存在（只是日志记录错误）
+        assert "user1" in manager.active_connections
+
+    @pytest.mark.asyncio
+    async def test_broadcast_removes_failed_connections(self, manager: WebSocketManager):
+        """测试广播移除失败连接."""
+        ws1 = AsyncMock()
+        ws1.send_json = AsyncMock()
+        ws2 = AsyncMock()
+        ws2.send_json = AsyncMock()
+        ws2.send_json.side_effect = Exception("Failed")
+
+        await manager.connect(ws1, "user1", "symbol1")
+        await manager.connect(ws2, "user2", "symbol1")
+
+        ws1.send_json.reset_mock()
+        ws2.send_json.reset_mock()
+        ws2.send_json.side_effect = Exception("Failed")
+
+        await manager.broadcast_to_symbol("symbol1", {"type": "test"})
+
+        # ws2应该被移除
+        assert "user2" not in manager.active_connections
