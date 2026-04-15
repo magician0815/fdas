@@ -59,15 +59,15 @@
 | T1.4 | adjustment_service.py 测试 | 98% | ✅ 完成 |
 | T1.5 | period_aggregation_service.py 测试 | 98% | ✅ 完成 |
 
-### Phase 2：API层测试
+### Phase 2：API层测试（进行中）
 
-| 任务 | 目标模块 | 预估工作量 |
-|------|----------|------------|
-| T2.1 | auth.py API测试补充 | 0.5天 |
-| T2.2 | users.py API测试 | 1天 |
-| T2.3 | fx_data.py API测试 | 1天 |
-| T2.4 | collection_tasks.py API测试 | 1天 |
-| T2.5 | datasources.py API测试 | 1天 |
+| 任务 | 目标模块 | 测试数 | 状态 |
+|------|----------|--------|------|
+| T2.1 | auth.py API测试补充 | 6 | ✅ 完成 |
+| T2.2 | users.py API测试 | 6 | ✅ 完成 |
+| T2.3 | fx_data.py API测试 | 8 | ✅ 完成 |
+| T2.4 | collection_tasks.py API测试 | 0 | 待开发 |
+| T2.5 | datasources.py API测试 | 0 | 待开发 |
 
 ### Phase 3：集成测试修复
 
@@ -92,7 +92,10 @@ backend/tests/
 ├── test_forex_daily_service.py ✅ 完成 (97%)
 ├── test_adjustment_service.py ✅ 完成 (98%)
 ├── test_period_aggregation_service.py ✅ 完成 (98%, 60 tests)
-├── test_auth_api.py          ⚠️ 部分完成 (74%)
+├── test_auth_api.py          ⚠️ 部分完成
+├── test_auth_api_full.py     ✅ 新增 (6 tests)
+├── test_users_api.py         ✅ 新增 (6 tests)
+├── test_fx_data_api.py       ✅ 新增 (8 tests)
 ├── test_integration.py       ❌ 需修复
 └── test_akshare_collector.py ❌ 需修复
 ```
@@ -101,12 +104,25 @@ backend/tests/
 
 ## 四、下一步行动
 
-### Phase 2 - API层测试
+### Phase 2 - 继续API层测试
 
 继续Phase 2任务，提升API层覆盖率：
-1. **T2.1** - auth.py API测试补充
-2. **T2.2** - users.py API测试
-3. **T2.3** - fx_data.py API测试
+1. **T2.4** - collection_tasks.py API测试
+2. **T2.5** - datasources.py API测试
+
+### Phase 3 - 集成测试修复
+
+修复失败的集成测试：
+- test_integration.py (4个错误)
+- test_akshare_collector.py (1个失败)
+
+---
+
+**当前统计**
+- 总测试数：420 passing
+- 覆盖率：58%（目标80%）
+- Phase 1：100%完成
+- Phase 2：60%完成（T2.1-T2.3）
 
 ---
 
