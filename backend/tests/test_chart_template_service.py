@@ -319,6 +319,71 @@ class TestListPublicTemplates:
         assert templates == []
 
 
+class TestApplyTemplateToChart:
+    """测试应用模板到图表."""
+
+    @pytest.mark.asyncio
+    async def test_apply_template_to_chart_success(
+        self, service: ChartTemplateService, mock_db_session, user_id
+    ):
+        """测试成功应用模板到图表."""
+        iso_time = datetime.utcnow().isoformat()
+
+        # Mock load_template返回
+        mock_template_setting = MagicMock()
+        mock_template_setting.setting_value = {
+            "name": "测试模板",
+            "description": "",
+            "config": {"ma_periods": [5, 10, 20]},
+            "is_public": False,
+            "created_at": iso_time,
+            "updated_at": iso_time,
+        }
+        mock_template_setting.user_id = user_id
+
+        # Mock chart_config查询返回None（不存在）
+        mock_empty_result = MagicMock()
+        mock_empty_result.scalar_one_or_none = MagicMock(return_value=None)
+
+        # Mock template查询返回
+        mock_template_result = MagicMock()
+        mock_template_result.scalar_one_or_none = MagicMock(return_value=mock_template_setting)
+
+        # 设置execute返回不同结果
+        call_count = 0
+        async def execute_side_effect(*args):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_template_result  # load_template query
+            return mock_empty_result  # chart_config query
+
+        mock_db_session.execute = execute_side_effect
+
+        result = await service.apply_template_to_chart(
+            mock_db_session, user_id, "template_001", "symbol123"
+        )
+
+        # 验证创建新配置
+        mock_db_session.add.assert_called()
+        mock_db_session.commit.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_apply_template_not_found(
+        self, service: ChartTemplateService, mock_db_session, user_id
+    ):
+        """测试模板不存在."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+        result = await service.apply_template_to_chart(
+            mock_db_session, user_id, "nonexistent", "symbol123"
+        )
+
+        assert result is False
+
+
 class TestUpdateTemplate:
     """测试更新模板."""
 

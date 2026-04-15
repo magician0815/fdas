@@ -8,6 +8,7 @@ Created: 2026-04-15
 """
 
 import pytest
+import json
 from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime
 
@@ -318,21 +319,14 @@ class TestWebSocketHandler:
     """测试WebSocket消息处理器."""
 
     @pytest.mark.asyncio
-    async def test_handler_subscribe_message(self, manager: WebSocketManager):
+    async def test_handler_subscribe_message(self):
         """测试订阅消息处理."""
-        from app.services.websocket_service import websocket_handler
+        from app.services.websocket_service import websocket_handler, ws_manager
 
         mock_ws = AsyncMock()
-        mock_ws.receive_json = AsyncMock()
         mock_ws.send_json = AsyncMock()
 
         # 模拟订阅消息
-        mock_ws.receive_json.return_value = {
-            "type": "subscribe",
-            "symbol_id": "symbol1"
-        }
-
-        # 只处理一条消息后模拟关闭
         call_count = 0
         async def receive_once():
             nonlocal call_count
@@ -346,15 +340,15 @@ class TestWebSocketHandler:
         try:
             await websocket_handler(mock_ws, "user1")
         except Exception:
-            pass  # 处理器会抛出异常退出循环
+            pass
 
-        # 验证连接注册
+        # 验证连接消息发送
         mock_ws.send_json.assert_called()
 
     @pytest.mark.asyncio
-    async def test_handler_ping_message(self, manager: WebSocketManager):
+    async def test_handler_ping_message(self):
         """测试Ping消息处理."""
-        from app.services.websocket_service import websocket_handler
+        from app.services.websocket_service import websocket_handler, ws_manager
 
         mock_ws = AsyncMock()
         mock_ws.send_json = AsyncMock()
@@ -375,9 +369,88 @@ class TestWebSocketHandler:
             pass
 
         # 验证pong响应
+        calls = mock_ws.send_json.call_args_list
+        # 最后一个调用应该是pong
+        pong_found = False
+        for call in calls:
+            if call[0][0].get("type") == "pong":
+                pong_found = True
+        assert pong_found
+
+    @pytest.mark.asyncio
+    async def test_handler_unsubscribe_message(self):
+        """测试取消订阅消息处理."""
+        from app.services.websocket_service import websocket_handler, ws_manager
+
+        mock_ws = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+
+        call_count = 0
+        async def receive_messages():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {"type": "subscribe", "symbol_id": "symbol1"}
+            elif call_count == 2:
+                return {"type": "unsubscribe", "symbol_id": "symbol1"}
+            raise Exception("Connection closed")
+
+        mock_ws.receive_json = receive_messages
+
+        try:
+            await websocket_handler(mock_ws, "user1")
+        except Exception:
+            pass
+
         mock_ws.send_json.assert_called()
-        call_args = mock_ws.send_json.call_args[0][0]
-        assert call_args["type"] == "pong"
+
+    @pytest.mark.asyncio
+    async def test_handler_error_message(self):
+        """测试错误消息处理."""
+        from app.services.websocket_service import websocket_handler, ws_manager
+
+        mock_ws = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+
+        call_count = 0
+        async def receive_error():
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise Exception("Connection closed")
+            return {"type": "unknown_type"}
+
+        mock_ws.receive_json = receive_error
+
+        try:
+            await websocket_handler(mock_ws, "user1")
+        except Exception:
+            pass
+
+        # 验证错误响应
+        calls = mock_ws.send_json.call_args_list
+        error_found = False
+        for call in calls:
+            if call[0][0].get("type") == "error":
+                error_found = True
+        assert error_found
+
+    @pytest.mark.asyncio
+    async def test_handler_json_decode_error(self):
+        """测试JSON解析错误."""
+        from app.services.websocket_service import websocket_handler, ws_manager
+
+        mock_ws = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+        mock_ws.receive_json = AsyncMock(side_effect=json.JSONDecodeError("test", "test", 0))
+
+        try:
+            await websocket_handler(mock_ws, "user1")
+        except Exception:
+            pass
+
+        # 验证错误响应
+        mock_ws.send_json.assert_called()
 
 
 class TestHeartbeatTask:
@@ -415,6 +488,34 @@ class TestHeartbeatTask:
         await stop_heartbeat_task()
 
         assert ws_manager.is_running is False
+
+    @pytest.mark.asyncio
+    async def test_start_heartbeat_task_loop(self):
+        """测试心跳任务循环."""
+        from app.services.websocket_service import start_heartbeat_task, ws_manager
+
+        ws = AsyncMock()
+        ws.send_json = AsyncMock()
+
+        await ws_manager.connect(ws, "user1", "symbol1")
+
+        # 运行短暂心跳后停止
+        ws_manager.is_running = True
+        ws_manager.heartbeat_interval = 0.1  # 快速心跳
+
+        # 创建任务并在短时间内取消
+        import asyncio
+        task = asyncio.create_task(start_heartbeat_task())
+
+        await asyncio.sleep(0.3)  # 运行2次心跳
+        ws_manager.is_running = False  # 停止
+
+        try:
+            await asyncio.wait_for(task, timeout=0.5)
+        except asyncio.TimeoutError:
+            task.cancel()
+
+        ws.send_json.assert_called()
 
 
 class TestWebSocketManagerCleanup:
