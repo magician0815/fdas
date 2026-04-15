@@ -431,3 +431,93 @@ class TestUpdateTemplate:
         )
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_update_template_all_keys(
+        self, service: ChartTemplateService, mock_db_session, user_id
+    ):
+        """测试更新模板所有字段（covers lines 290, 293-296）."""
+        iso_time = datetime.utcnow().isoformat()
+        mock_setting = MagicMock()
+        mock_setting.setting_value = {
+            "name": "原名",
+            "description": "原描述",
+            "config": {"ma_periods": [5]},
+            "is_public": False,
+            "created_at": iso_time,
+            "updated_at": iso_time,
+        }
+        mock_setting.user_id = user_id
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=mock_setting)
+        mock_db_session.execute = AsyncMock(return_value=mock_result)
+
+        # 更新所有字段
+        result = await service.update_template(
+            mock_db_session,
+            user_id,
+            "template_001",
+            {
+                "config": {"ma_periods": [5, 10, 20]},
+                "name": "新名称",
+                "description": "新描述",
+                "is_public": True,
+            },
+        )
+
+        # 验证更新后的值
+        assert mock_setting.setting_value["config"] == {"ma_periods": [5, 10, 20]}
+        assert mock_setting.setting_value["description"] == "新描述"
+        assert mock_setting.setting_value["is_public"] is True
+        mock_db_session.commit.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_apply_template_existing_setting(
+        self, service: ChartTemplateService, mock_db_session, user_id
+    ):
+        """测试应用模板到已存在配置（covers line 388）."""
+        iso_time = datetime.utcnow().isoformat()
+
+        # Mock template setting for load_template
+        mock_template_setting = MagicMock()
+        mock_template_setting.setting_value = {
+            "name": "测试模板",
+            "description": "",
+            "config": {"ma_periods": [5, 10]},
+            "is_public": False,
+            "created_at": iso_time,
+            "updated_at": iso_time,
+        }
+        mock_template_setting.user_id = user_id
+
+        # Mock existing chart_config setting (line 388 path)
+        mock_existing_chart_setting = MagicMock()
+        mock_existing_chart_setting.setting_value = {"ma_periods": [5]}
+
+        # Mock results
+        mock_template_result = MagicMock()
+        mock_template_result.scalar_one_or_none = MagicMock(return_value=mock_template_setting)
+
+        mock_chart_result = MagicMock()
+        mock_chart_result.scalar_one_or_none = MagicMock(return_value=mock_existing_chart_setting)
+
+        # Set execute to return different results based on call order
+        call_count = 0
+        async def execute_side_effect(*args):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_template_result  # load_template query
+            return mock_chart_result  # chart_config query
+
+        mock_db_session.execute = execute_side_effect
+
+        result = await service.apply_template_to_chart(
+            mock_db_session, user_id, "template_001", str(uuid4())
+        )
+
+        assert result is True
+        # 验证更新了现有配置值
+        assert mock_existing_chart_setting.setting_value == {"ma_periods": [5, 10]}
+        mock_db_session.commit.assert_called()

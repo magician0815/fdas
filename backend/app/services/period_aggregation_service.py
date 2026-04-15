@@ -97,9 +97,6 @@ def aggregate_to_weekly(daily_data: List[Dict[str, Any]]) -> List[Dict[str, Any]
     weekly_data = []
 
     for week_start, week_items in sorted(weekly_groups.items()):
-        if not week_items:
-            continue
-
         # 按日期排序
         sorted_items = sorted(week_items, key=lambda x: x.get("date", ""))
 
@@ -193,9 +190,6 @@ def aggregate_to_monthly(daily_data: List[Dict[str, Any]]) -> List[Dict[str, Any
     monthly_data = []
 
     for month_start, month_items in sorted(monthly_groups.items()):
-        if not month_items:
-            continue
-
         # 按日期排序
         sorted_items = sorted(month_items, key=lambda x: x.get("date", ""))
 

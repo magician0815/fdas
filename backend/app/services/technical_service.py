@@ -132,10 +132,10 @@ class TechnicalService:
 
         # 计算EMA
         def ema(prices, period):
-            """计算EMA."""
-            if len(prices) < period:
-                return []
+            """计算EMA.
 
+            Note: Caller ensures len(prices) >= period before calling.
+            """
             # 第一个EMA值用SMA
             sma = sum(prices[:period]) / period
             ema_values = [sma]

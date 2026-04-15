@@ -532,6 +532,28 @@ class TestCalculateAdjustedPrices:
 
         assert len(result) == 1
 
+    def test_invalid_string_date_with_adjustment(self):
+        """测试无效字符串日期触发ValueError异常路径（覆盖187-188行）."""
+        daily_data = [
+            {"date": "not-a-date", "open": 10.0, "close": 10.0, "high": 10.0, "low": 10.0},
+            {"date": date(2026, 4, 14), "open": 11.0, "close": 11.0, "high": 11.0, "low": 11.0},
+        ]
+
+        adjustment_factors = [
+            AdjustmentFactor(event_date=date(2026, 4, 14), factor=0.9),
+        ]
+
+        result = calculate_adjusted_prices(
+            daily_data=daily_data,
+            adjustment_factors=adjustment_factors,
+            adjustment_type=AdjustmentType.FORWARD,
+        )
+
+        assert len(result) == 2
+        # 无效日期的数据仍然被处理，使用累计因子
+        assert result[0]["open"] == 9.0  # invalid-date被应用累计因子
+        assert result[1]["open"] == 9.9  # 正常日期被复权
+
     def test_multiple_adjustment_events(self):
         """测试多次除权事件."""
         daily_data = [

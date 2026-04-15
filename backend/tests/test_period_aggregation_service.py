@@ -782,3 +782,43 @@ class TestPeriodAggregationServiceWithMock:
             # DAILY type should return original data
             assert result["data"] == daily_data
             assert result["period_type"] == PeriodType.DAILY
+
+
+# =====================
+# Coverage Tests (Missing Lines)
+# =====================
+
+class TestCoverageMissingLines:
+    """Tests to cover missing lines 186 and similar."""
+
+    def test_aggregate_monthly_with_none_date(self):
+        """Test monthly aggregation with None date value (covers line 186)."""
+        daily_data = [
+            {"date": None, "open": 7.0, "close": 7.1, "high": 7.15, "low": 6.95, "volume": 1000},
+            {"date": "2026-04-15", "open": 7.3, "close": 7.4, "high": 7.45, "low": 7.25, "volume": 1100},
+        ]
+        result = aggregate_to_monthly(daily_data)
+        # None date should be skipped, only valid date processed
+        assert len(result) == 1
+        assert result[0]["days"] == 1
+
+    def test_aggregate_weekly_with_none_date(self):
+        """Test weekly aggregation with None date value."""
+        daily_data = [
+            {"date": None, "open": 7.0, "close": 7.1, "high": 7.15, "low": 6.95, "volume": 1000},
+            {"date": "2026-04-15", "open": 7.3, "close": 7.4, "high": 7.45, "low": 7.25, "volume": 1100},
+        ]
+        result = aggregate_to_weekly(daily_data)
+        # None date should be skipped
+        assert len(result) == 1
+
+    def test_aggregate_monthly_with_zero_date(self):
+        """Test monthly aggregation with zero/False as date (covers line 186)."""
+        daily_data = [
+            {"date": 0, "open": 7.0, "close": 7.1, "high": 7.15, "low": 6.95, "volume": 1000},
+            {"date": False, "open": 7.1, "close": 7.2, "high": 7.25, "low": 7.05, "volume": 900},
+            {"date": "2026-04-15", "open": 7.3, "close": 7.4, "high": 7.45, "low": 7.25, "volume": 1100},
+        ]
+        result = aggregate_to_monthly(daily_data)
+        # Zero and False dates should be skipped
+        assert len(result) == 1

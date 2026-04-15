@@ -219,3 +219,48 @@ class TestBuildMainContinuousSeries:
         # 验证主力数据标记
         for item in result:
             assert item.get("is_main_data") is True
+
+    def test_build_series_forward_adjust(self, service: MainContractService):
+        """测试前向调整平滑方法（covers line 221-223）."""
+        contracts_data = [
+            {"contract_id": "IF2401", "date": date(2026, 1, 5),
+             "open_interest": 80000, "open": 4000, "high": 4010, "low": 3990, "close": 4005},
+            {"contract_id": "IF2402", "date": date(2026, 1, 5),
+             "open_interest": 50000, "open": 4020, "high": 4030, "low": 4010, "close": 4025},
+            # 切换日
+            {"contract_id": "IF2401", "date": date(2026, 1, 6),
+             "open_interest": 30000, "open": 4010, "high": 4020, "low": 4000, "close": 4015},
+            {"contract_id": "IF2402", "date": date(2026, 1, 6),
+             "open_interest": 90000, "open": 4030, "high": 4040, "low": 4020, "close": 4035},
+        ]
+
+        switches = service.detect_contract_switches(contracts_data, "IF")
+        result = service.build_main_continuous_series(contracts_data, switches, "forward_adjust")
+
+        assert len(result) > 0
+        # 前向调整不应累计调整比例
+        for item in result:
+            assert item.get("is_main_data") is True
+
+    def test_build_series_none_adjust(self, service: MainContractService):
+        """测试不调整平滑方法（covers line 224-226）."""
+        contracts_data = [
+            {"contract_id": "IF2401", "date": date(2026, 1, 5),
+             "open_interest": 80000, "open": 4000, "high": 4010, "low": 3990, "close": 4005},
+            {"contract_id": "IF2402", "date": date(2026, 1, 5),
+             "open_interest": 50000, "open": 4020, "high": 4030, "low": 4010, "close": 4025},
+            # 切换日
+            {"contract_id": "IF2401", "date": date(2026, 1, 6),
+             "open_interest": 30000, "open": 4010, "high": 4020, "low": 4000, "close": 4015},
+            {"contract_id": "IF2402", "date": date(2026, 1, 6),
+             "open_interest": 90000, "open": 4030, "high": 4040, "low": 4020, "close": 4035},
+        ]
+
+        switches = service.detect_contract_switches(contracts_data, "IF")
+        result = service.build_main_continuous_series(contracts_data, switches, "none")
+
+        assert len(result) > 0
+        # 不调整时adjust_ratio应为1.0
+        for item in result:
+            assert item.get("is_main_data") is True
+            assert item.get("adjust_ratio") == 1.0

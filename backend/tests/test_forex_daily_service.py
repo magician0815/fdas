@@ -787,3 +787,99 @@ class TestEdgeCases:
                     db=mock_db,
                     symbol_id=symbol_id,
                 )
+
+
+# ============ Test Class: Coverage Missing Lines ============
+
+class TestCoverageMissingLines:
+    """补充覆盖缺失行测试."""
+
+    @pytest.mark.asyncio
+    async def test_get_forex_daily_asc_symbol_code_not_found_returns_empty(self):
+        """测试升序查询symbol_code不存在返回空列表（覆盖line 177）."""
+        mock_db = AsyncMock()
+
+        # Mock symbol查询返回None
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        from app.services.forex_daily_service import ForexDailyService
+        service = ForexDailyService()
+
+        result = await service.get_forex_daily_asc(
+            db=mock_db,
+            symbol_code="NOTEXIST",
+        )
+
+        # Line 177: return [] when symbol_id not found
+        assert result == []
+        # 只执行了一次查询（symbol查询）
+        mock_db.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_forex_daily_with_start_date_filter(self):
+        """测试start_date过滤（覆盖line 185）."""
+        mock_db = AsyncMock()
+
+        # Mock查询结果
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        from app.services.forex_daily_service import ForexDailyService
+        service = ForexDailyService()
+
+        result = await service.get_forex_daily(
+            db=mock_db,
+            symbol_id=uuid4(),
+            start_date=date(2026, 4, 1),  # 只提供start_date
+        )
+
+        # Line 185被执行
+        mock_db.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_forex_daily_with_end_date_filter(self):
+        """测试end_date过滤（覆盖line 187）."""
+        mock_db = AsyncMock()
+
+        # Mock查询结果
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        from app.services.forex_daily_service import ForexDailyService
+        service = ForexDailyService()
+
+        result = await service.get_forex_daily(
+            db=mock_db,
+            symbol_id=uuid4(),
+            end_date=date(2026, 4, 15),  # 只提供end_date
+        )
+
+        # Line 187被执行
+        mock_db.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_forex_daily_asc_with_date_filters(self):
+        """测试升序查询带日期过滤."""
+        mock_db = AsyncMock()
+
+        symbol_id = uuid4()
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        from app.services.forex_daily_service import ForexDailyService
+        service = ForexDailyService()
+
+        result = await service.get_forex_daily_asc(
+            db=mock_db,
+            symbol_id=symbol_id,
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 15),
+        )
+
+        mock_db.execute.assert_called_once()
