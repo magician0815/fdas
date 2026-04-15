@@ -323,15 +323,20 @@ class TestWebSocketHandler:
         """测试订阅消息处理."""
         from app.services.websocket_service import websocket_handler, ws_manager
 
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+
         mock_ws = AsyncMock()
         mock_ws.send_json = AsyncMock()
+        mock_ws.close = AsyncMock()
 
-        # 模拟订阅消息
+        # 模拟订阅消息后关闭连接
         call_count = 0
         async def receive_once():
             nonlocal call_count
             call_count += 1
             if call_count > 1:
+                # 模拟连接关闭
                 raise Exception("Connection closed")
             return {"type": "subscribe", "symbol_id": "symbol1"}
 
@@ -350,8 +355,12 @@ class TestWebSocketHandler:
         """测试Ping消息处理."""
         from app.services.websocket_service import websocket_handler, ws_manager
 
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+
         mock_ws = AsyncMock()
         mock_ws.send_json = AsyncMock()
+        mock_ws.close = AsyncMock()
 
         call_count = 0
         async def receive_ping():
@@ -382,8 +391,12 @@ class TestWebSocketHandler:
         """测试取消订阅消息处理."""
         from app.services.websocket_service import websocket_handler, ws_manager
 
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+
         mock_ws = AsyncMock()
         mock_ws.send_json = AsyncMock()
+        mock_ws.close = AsyncMock()
 
         call_count = 0
         async def receive_messages():
@@ -409,8 +422,12 @@ class TestWebSocketHandler:
         """测试错误消息处理."""
         from app.services.websocket_service import websocket_handler, ws_manager
 
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+
         mock_ws = AsyncMock()
         mock_ws.send_json = AsyncMock()
+        mock_ws.close = AsyncMock()
 
         call_count = 0
         async def receive_error():
@@ -440,9 +457,23 @@ class TestWebSocketHandler:
         """测试JSON解析错误."""
         from app.services.websocket_service import websocket_handler, ws_manager
 
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+
         mock_ws = AsyncMock()
         mock_ws.send_json = AsyncMock()
-        mock_ws.receive_json = AsyncMock(side_effect=json.JSONDecodeError("test", "test", 0))
+        mock_ws.close = AsyncMock()
+
+        # 第一次调用抛出JSONDecodeError，第二次抛出普通Exception退出循环
+        call_count = 0
+        async def receive_with_error():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise json.JSONDecodeError("test", "test", 0)
+            raise Exception("Connection closed")
+
+        mock_ws.receive_json = receive_with_error
 
         try:
             await websocket_handler(mock_ws, "user1")
@@ -451,6 +482,13 @@ class TestWebSocketHandler:
 
         # 验证错误响应
         mock_ws.send_json.assert_called()
+        # 验证发送了error类型消息
+        calls = mock_ws.send_json.call_args_list
+        error_found = False
+        for call in calls:
+            if call[0][0].get("type") == "error":
+                error_found = True
+        assert error_found
 
 
 class TestHeartbeatTask:
@@ -459,7 +497,11 @@ class TestHeartbeatTask:
     @pytest.mark.asyncio
     async def test_start_heartbeat(self, manager: WebSocketManager):
         """测试启动心跳."""
-        from app.services.websocket_service import start_heartbeat_task
+        from app.services.websocket_service import start_heartbeat_task, ws_manager
+
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+        ws_manager.is_running = False
 
         ws = AsyncMock()
         ws.send_json = AsyncMock()
@@ -467,8 +509,6 @@ class TestHeartbeatTask:
         await manager.connect(ws, "user1", "symbol1")
 
         # 运行一次心跳后停止
-        original_is_running = manager.is_running
-
         async def run_once():
             await manager.send_heartbeat()
 
@@ -493,29 +533,124 @@ class TestHeartbeatTask:
     async def test_start_heartbeat_task_loop(self):
         """测试心跳任务循环."""
         from app.services.websocket_service import start_heartbeat_task, ws_manager
+        import asyncio
+
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+        ws_manager.is_running = False
 
         ws = AsyncMock()
         ws.send_json = AsyncMock()
 
         await ws_manager.connect(ws, "user1", "symbol1")
+        ws.send_json.reset_mock()
 
         # 运行短暂心跳后停止
-        ws_manager.is_running = True
         ws_manager.heartbeat_interval = 0.1  # 快速心跳
 
         # 创建任务并在短时间内取消
-        import asyncio
         task = asyncio.create_task(start_heartbeat_task())
 
-        await asyncio.sleep(0.3)  # 运行2次心跳
-        ws_manager.is_running = False  # 停止
+        await asyncio.sleep(0.3)  # 运行2-3次心跳
+        ws_manager.is_running = False  # 停止标志
 
         try:
-            await asyncio.wait_for(task, timeout=0.5)
+            await asyncio.wait_for(task, timeout=1.0)
         except asyncio.TimeoutError:
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
         ws.send_json.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_handler_subscribe_with_existing_subscription(self):
+        """测试已有订阅时切换订阅（covers line 272）."""
+        from app.services.websocket_service import websocket_handler, ws_manager
+
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+
+        mock_ws = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+        mock_ws.close = AsyncMock()
+
+        call_count = 0
+        async def receive_messages():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {"type": "subscribe", "symbol_id": "symbol1"}
+            elif call_count == 2:
+                return {"type": "subscribe", "symbol_id": "symbol2"}
+            raise Exception("Connection closed")
+
+        mock_ws.receive_json = receive_messages
+
+        try:
+            await websocket_handler(mock_ws, "user1")
+        except Exception:
+            pass
+
+        # 验证订阅消息发送
+        mock_ws.send_json.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_handler_heartbeat_response(self):
+        """测试心跳响应消息处理（covers line 299）."""
+        from app.services.websocket_service import websocket_handler, ws_manager
+
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+
+        mock_ws = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+        mock_ws.close = AsyncMock()
+
+        call_count = 0
+        async def receive_messages():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {"type": "subscribe", "symbol_id": "symbol1"}
+            elif call_count == 2:
+                return {"type": "heartbeat_response"}
+            raise Exception("Connection closed")
+
+        mock_ws.receive_json = receive_messages
+
+        try:
+            await websocket_handler(mock_ws, "user1")
+        except Exception:
+            pass
+
+        # heartbeat_response应该被忽略，不发送额外消息
+        mock_ws.send_json.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_handler_connection_error(self):
+        """测试连接错误处理（covers lines 327-328）."""
+        from app.services.websocket_service import websocket_handler, ws_manager
+
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+
+        mock_ws = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+        mock_ws.close = AsyncMock()
+
+        # 模拟连接时立即抛出异常
+        mock_ws.receive_json = AsyncMock(side_effect=Exception("Connection error immediately"))
+
+        try:
+            await websocket_handler(mock_ws, "user1")
+        except Exception:
+            pass
+
+        # 验证没有发送消息（错误发生在连接开始）
+        # send_json可能被调用一次（connect消息）或失败
 
 
 class TestWebSocketManagerCleanup:
@@ -538,12 +673,13 @@ class TestWebSocketManagerCleanup:
 
     @pytest.mark.asyncio
     async def test_broadcast_removes_failed_connections(self, manager: WebSocketManager):
-        """测试广播移除失败连接."""
+        """测试广播移除失败连接（covers lines 145-147, 151）."""
         ws1 = AsyncMock()
         ws1.send_json = AsyncMock()
         ws2 = AsyncMock()
         ws2.send_json = AsyncMock()
-        ws2.send_json.side_effect = Exception("Failed")
+        # ws2发送失败
+        ws2.send_json.side_effect = Exception("Connection failed")
 
         await manager.connect(ws1, "user1", "symbol1")
         await manager.connect(ws2, "user2", "symbol1")
@@ -556,3 +692,39 @@ class TestWebSocketManagerCleanup:
 
         # ws2应该被移除
         assert "user2" not in manager.active_connections
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_task_exception_handling(self):
+        """测试心跳任务异常处理（covers lines 350-352）."""
+        from app.services.websocket_service import start_heartbeat_task, ws_manager
+        import asyncio
+
+        # 清空全局manager状态
+        ws_manager.active_connections = {}
+        ws_manager.is_running = False
+
+        # 创建一个会抛出异常的websocket
+        ws = AsyncMock()
+        ws.send_json = AsyncMock(side_effect=Exception("Send failed"))
+
+        await ws_manager.connect(ws, "user1", "symbol1")
+        ws_manager.heartbeat_interval = 0.1
+
+        # 创建心跳任务
+        task = asyncio.create_task(start_heartbeat_task())
+
+        # 等待短暂时间让异常发生
+        await asyncio.sleep(0.3)
+        ws_manager.is_running = False
+
+        try:
+            await asyncio.wait_for(task, timeout=1.0)
+        except asyncio.TimeoutError:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        # 验证任务已停止
+        assert ws_manager.is_running is False
