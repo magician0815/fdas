@@ -43,11 +43,10 @@ async def get_current_user_ws(
     if not session_id:
         return None
 
-    # 验证session有效性（包含过期时间检查）
+    # 验证session有效性（过期时间检查）
     result = await db.execute(
         select(Session).where(
             Session.id == session_id,
-            Session.is_valid == True,
             Session.expires_at > datetime.utcnow()
         )
     )
@@ -80,11 +79,10 @@ async def get_current_user(
             detail="未登录",
         )
 
-    # 验证session有效性（包含过期时间检查）
+    # 验证session有效性（过期时间检查）
     result = await db.execute(
         select(Session).where(
             Session.id == session_id,
-            Session.is_valid == True,
             Session.expires_at > datetime.utcnow()
         )
     )
