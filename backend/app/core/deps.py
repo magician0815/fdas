@@ -6,6 +6,7 @@ Created: 2026-04-03
 Updated: 2026-04-14 - 新增require_login依赖函数和WebSocket认证函数
 """
 
+from typing import Optional
 from fastapi import Depends, HTTPException, status, Request, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -19,7 +20,7 @@ from app.models.session import Session
 async def get_current_user_ws(
     websocket: WebSocket,
     db: AsyncSession,
-) -> str | None:
+) -> Optional[str]:
     """
     WebSocket连接的用户认证.
 
@@ -30,7 +31,7 @@ async def get_current_user_ws(
         db: 数据库会话
 
     Returns:
-        str | None: 用户ID（验证成功）或None（验证失败）
+        Optional[str]: 用户ID（验证成功）或None（验证失败）
     """
     # 从query参数获取session_id
     session_id = websocket.query_params.get("session_id")

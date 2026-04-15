@@ -37,7 +37,7 @@ class DataSourceUpdate(BaseModel):
     market_id: Optional[UUID] = Field(None, description="适用市场类型ID")
     interface: Optional[str] = Field(None, description="AKShare接口名称", max_length=50)
     description: Optional[str] = Field(None, description="数据源描述")
-    config_schema: Optional[Dict[str, Any] = Field(None, description="配置参数Schema")
+    config_schema: Optional[Dict[str, Any]] = Field(None, description="配置参数Schema")
     supported_symbols: Optional[List[str]] = Field(None, description="支持的货币对列表")
     min_date: Optional[date] = Field(None, description="最早可用数据日期")
     is_active: Optional[bool] = Field(None, description="是否启用")
