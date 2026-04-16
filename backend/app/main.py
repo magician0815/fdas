@@ -7,9 +7,11 @@ Updated: 2026-04-16 - 添加slowapi速率限制中间件，支持测试环境禁
 """
 
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -107,3 +109,32 @@ app.include_router(collection_tasks.router, prefix="/api/v1/collection-tasks", t
 app.include_router(fx_data.router, prefix="/api/v1/fx", tags=["外汇行情数据"])
 app.include_router(chart_settings.router, prefix="/api/v1/chart", tags=["图表设置"])
 app.include_router(stocks.router, prefix="/api/v1", tags=["股票数据"])
+
+# 静态文件服务（前端）
+# 检查静态文件目录是否存在
+STATIC_DIR = Path("/app/static")
+if STATIC_DIR.exists() and STATIC_DIR.is_dir():
+    # 挂载静态资源目录（CSS、JS、图片等）
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+    # 首页处理 - 返回index.html
+    from fastapi.responses import FileResponse
+
+    @app.get("/")
+    async def serve_index():
+        """返回前端首页."""
+        return FileResponse(STATIC_DIR / "index.html")
+
+    # 捕获所有未匹配的路径，返回index.html（支持SPA路由）
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """
+        SPA路由支持.
+        所有非API路由返回index.html，由前端路由处理.
+        """
+        # 如果请求的是API路径，跳过
+        if full_path.startswith("api/"):
+            # 让FastAPI返回404
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
+        # 返回index.html
+        return FileResponse(STATIC_DIR / "index.html")

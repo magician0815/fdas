@@ -52,23 +52,23 @@ def rate_limit(limit_string: str):
 @router.post("/login", response_model=Response)
 @rate_limit("5/minute")
 async def login(
-    request: LoginRequest,
-    http_request: Request,
+    request_body: LoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     用户登录.
 
     Args:
-        request: 登录请求
-        http_request: HTTP请求对象（用于获取IP）
+        request_body: 登录请求
+        request: HTTP请求对象（用于获取IP和速率限制）
         db: 数据库会话
 
     Returns:
         Response: 登录结果
     """
     # 验证用户
-    user = await authenticate_user(db, request.username, request.password)
+    user = await authenticate_user(db, request_body.username, request_body.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -77,12 +77,12 @@ async def login(
 
     # 获取客户端IP地址
     # 优先使用X-Forwarded-For（代理场景），否则使用直接连接IP
-    client_ip = http_request.headers.get("X-Forwarded-For")
+    client_ip = request.headers.get("X-Forwarded-For")
     if client_ip:
         # X-Forwarded-For可能包含多个IP，取第一个
         client_ip = client_ip.split(",")[0].strip()
     else:
-        client_ip = http_request.client.host if http_request.client else None
+        client_ip = request.client.host if request.client else None
 
     # 创建Session（带IP绑定）
     session = await session_service.create_session(

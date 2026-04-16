@@ -160,15 +160,16 @@ COMMENT ON COLUMN collection_task_logs.duration_ms IS '执行耗时（毫秒）'
 COMMENT ON COLUMN collection_task_logs.created_at IS '创建时间';
 
 -- APScheduler任务表
+-- 注意: next_run_time使用NUMERIC类型存储Unix timestamp，兼容APScheduler
 CREATE TABLE IF NOT EXISTS apscheduler_jobs (
     id VARCHAR(255) PRIMARY KEY,
-    next_run_time TIMESTAMP WITH TIME ZONE,
+    next_run_time NUMERIC(24, 6),
     job_state BYTEA NOT NULL
 );
 
 COMMENT ON TABLE apscheduler_jobs IS '定时任务调度器任务表';
 COMMENT ON COLUMN apscheduler_jobs.id IS '任务标识ID';
-COMMENT ON COLUMN apscheduler_jobs.next_run_time IS '下次执行时间';
+COMMENT ON COLUMN apscheduler_jobs.next_run_time IS '下次执行时间（Unix timestamp）';
 COMMENT ON COLUMN apscheduler_jobs.job_state IS '任务状态数据';
 
 -- ============================================
