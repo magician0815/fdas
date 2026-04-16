@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FDAS生产部署指南 v2.0.1</title>
+    <style>
+        /* ==================== 基础样式 ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f7fa;
+        }
+
+        /* ==================== 布局 ==================== */
+        .layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 280px;
+            background: #fff;
+            border-right: 1px solid #e8e8e8;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #1890ff, #096dd9);
+            color: #fff;
+        }
+
+        .sidebar-title {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .sidebar-version {
+            font-size: 12px;
+            margin-top: 5px;
+            opacity: 0.8;
+        }
+
+        /* 目录树 */
+        .toc {
+            padding: 15px 0;
+        }
+
+        .toc-section {
+            margin-bottom: 5px;
+        }
+
+        .toc-section-title {
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.2s;
+        }
+
+        .toc-section-title:hover {
+            background: #f0f0f0;
+        }
+
+        .toc-section-title.active {
+            background: #e6f7ff;
+            color: #1890ff;
+        }
+
+        .toc-toggle {
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+
+        .toc-section.collapsed .toc-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .toc-section.collapsed .toc-items {
+            display: none;
+        }
+
+        .toc-items {
+            padding-left: 20px;
+        }
+
+        .toc-item {
+            padding: 8px 20px 8px 30px;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toc-item:hover {
+            color: #1890ff;
+            background: #f0f7ff;
+        }
+
+        .toc-item.active {
+            color: #1890ff;
+            background: #e6f7ff;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            margin-left: 280px;
+            padding: 20px 40px;
+            max-width: 1200px;
+            flex: 1;
+        }
+
+        /* ==================== 内容样式 ==================== */
+        .chapter {
+            background: #fff;
+            padding: 30px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .chapter-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1890ff;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #1890ff;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin: 25px 0 15px 0;
+        }
+
+        .subsection-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #555;
+            margin: 20px 0 10px 0;
+        }
+
+        p {
+            margin-bottom: 15px;
+        }
+
+        /* 代码块 */
+        .code-block {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            position: relative;
+        }
+
+        .code-block .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #3b4252;
+            color: #abb2bf;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .code-block .copy-btn:hover {
+            background: #4c566a;
+        }
+
+        .code-block .language {
+            color: #61afef;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        /* 表格 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            border: 1px solid #e8e8e8;
+            text-align: left;
+        }
+
+        th {
+            background: #fafafa;
+            font-weight: bold;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        /* 提示框 */
+        .alert {
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .alert-warning {
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            color: #ad6800;
+        }
+
+        .alert-error {
+            background: #fff1f0;
+            border: 1px solid #ffa39e;
+            color: #cf1322;
+        }
+
+        .alert-success {
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            color: #389e0d;
+        }
+
+        .alert-info {
+            background: #e6f7ff;
+            border: 1px solid #91d5ff;
+            color: #096dd9;
+        }
+
+        /* 列表 */
+        ul, ol {
+            margin: 15px 0;
+            padding-left: 25px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        /* ==================== 顶部导航 ==================== */
+        .top-nav {
+            background: #fff;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e8e8e8;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+        }
+
+        .search-input {
+            padding: 8px 15px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            width: 300px;
+            font-size: 14px;
+        }
+
+        .search-input:focus {
+            border-color: #1890ff;
+            outline: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-link {
+            color: #666;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        .nav-link:hover {
+            background: #f0f0f0;
+            color: #1890ff;
+        }
+
+        /* ==================== 搜索结果 ==================== */
+        .search-results {
+            background: #fff;
+            border: 1px solid #e8e8e8;
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .search-result-item {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .search-result-item:hover {
+            background: #f0f7ff;
+        }
+
+        .search-result-title {
+            font-weight: bold;
+            color: #1890ff;
+        }
+
+        .search-result-context {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        /* ==================== 底部导航 ==================== */
+        .footer-nav {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .footer-nav-link {
+            color: #1890ff;
+            text-decoration: none;
+        }
+
+        .footer-nav-link:hover {
+            text-decoration: underline;
+        }
+
+        /* ==================== 响应式 ==================== */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .layout {
+                flex-direction: column;
+            }
+        }
+
+        /* ==================== 打印样式 ==================== */
+        @media print {
+            .sidebar, .top-nav, .footer-nav, .copy-btn {
+                display: none;
+            }
+
+            .main-content {
+                margin-left: 0;
+            }
+
+            .chapter {
+                box-shadow: none;
+                border: 1px solid #ccc;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <div class="top-nav" style="margin-left: 280px;">
+        <div class="search-box">
+            <input type="text" class="search-input" id="searchInput" placeholder="搜索部署文档..." oninput="performSearch()">
+            <div class="search-results" id="searchResults"></div>
+        </div>
+        <div class="nav-links">
+            <a href="#chapter1" class="nav-link">系统概述</a>
+            <a href="#chapter2" class="nav-link">单容器部署</a>
+            <a href="#chapter3" class="nav-link">多容器部署</a>
+            <a href="#appendix-a" class="nav-link">常见问题</a>
+        </div>
+    </div>
+
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">FDAS生产部署指南</div>
+            <div class="sidebar-version">v2.0.1 | 2026-04-17</div>
+        </div>
+        <nav class="toc" id="toc">
+            <!-- 第一章 -->
+            <div class="toc-section">
+                <div class="toc-section-title active" onclick="toggleSection(this)">
+                    第一章 系统概述
+                    <span class="toc-toggle">▼</span>
+                </div>
+                <div class="toc-items">
+                    <div class="toc-item active" onclick="scrollToSection('section-1-1')">1.1 系统架构</div>
+                    <div class="toc-item" onclick="scrollToSection('section-1-2')">1.2 技术栈清单</div>
+                    <div class="toc-item" onclick="scrollToSection('section-1-3')">1.3 部署前提条件</div>
+                    <div class="toc-item" onclick="scrollToSection('section-1-4')">1.4 部署方案说明</div>
+                </div>
+            </div>
+
+            <!-- 第二章 -->
+            <div class="toc-section">
+                <div class="toc-section-title" onclick="toggleSection(this)">
+                    第二章 单容器部署方案
+                    <span class="toc-toggle">▼</span>
+                </div>
+                <div class="toc-items">
+                    <div class="toc-item" onclick="scrollToSection('section-2-1')">2.1 方案架构</div>
+                    <div class="toc-item" onclick="scrollToSection('section-2-2')">2.2 用户隔离设计</div>
+                    <div class="toc-item" onclick="scrollToSection('section-2-3')">2.3 一键部署脚本</div>
+                    <div class="toc-item" onclick="scrollToSection('section-2-4')">2.4 手动部署步骤</div>
+                    <div class="toc-item" onclick="scrollToSection('section-2-5')">2.5 配置文件说明</div>
+                    <div class="toc-item" onclick="scrollToSection('section-2-6')">2.6 应对措施</div>
+                </div>
+            </div>
+
+            <!-- 第三章 -->
+            <div class="toc-section">
+                <div class="toc-section-title" onclick="toggleSection(this)">
+                    第三章 多容器部署方案
+                    <span class="toc-toggle">▼</span>
+                </div>
+                <div class="toc-items">
+                    <div class="toc-item" onclick="scrollToSection('section-3-1')">3.1 方案架构</div>
+                    <div class="toc-item" onclick="scrollToSection('section-3-2')">3.2 Docker Compose配置</div>
+                    <div class="toc-item" onclick="scrollToSection('section-3-3')">3.3 一键部署脚本</div>
+                    <div class="toc-item" onclick="scrollToSection('section-3-4')">3.4 数据备份恢复</div>
+                    <div class="toc-item" onclick="scrollToSection('section-3-5')">3.5 应对措施</div>
+                </div>
+            </div>
+
+            <!-- 第四章 -->
+            <div class="toc-section">
+                <div class="toc-section-title" onclick="toggleSection(this)">
+                    第四章 迁移方案
+                    <span class="toc-toggle">▼</span>
+                </div>
+                <div class="toc-items">
+                    <div class="toc-item" onclick="scrollToSection('section-4-1')">4.1 数据迁移</div>
+                    <div class="toc-item" onclick="scrollToSection('section-4-2')">4.2 服务迁移</div>
+                    <div class="toc-item" onclick="scrollToSection('section-4-3')">4.3 回滚机制</div>
+                    <div class="toc-item" onclick="scrollToSection('section-4-4')">4.4 迁移验证清单</div>
+                </div>
+            </div>
+
+            <!-- 第五章 -->
+            <div class="toc-section">
+                <div class="toc-section-title" onclick="toggleSection(this)">
+                    第五章 增量更新
+                    <span class="toc-toggle">▼</span>
+                </div>
+                <div class="toc-items">
+                    <div class="toc-item" onclick="scrollToSection('section-5-1')">5.1 版本升级流程</div>
+                    <div class="toc-item" onclick="scrollToSection('section-5-2')">5.2 数据库迁移模板</div>
+                    <div class="toc-item" onclick="scrollToSection('section-5-3')">5.3 回滚机制</div>
+                </div>
+            </div>
+
+            <!-- 第六章 -->
+            <div class="toc-section">
+                <div class="toc-section-title" onclick="toggleSection(this)">
+                    第六章 日常运维
+                    <span class="toc-toggle">▼</span>
+                </div>
+                <div class="toc-items">
+                    <div class="toc-item" onclick="scrollToSection('section-6-1')">6.1 fdas-ops运维脚本</div>
+                    <div class="toc-item" onclick="scrollToSection('section-6-2')">6.2 常用运维场景</div>
+                    <div class="toc-item" onclick="scrollToSection('section-6-3')">6.3 监控与告警</div>
+                </div>
+            </div>
+
+            <!-- 附录A -->
+            <div class="toc-section">
+                <div class="toc-section-title" onclick="toggleSection(this)">
+                    附录A 常见问题与应对措施
+                    <span class="toc-toggle">▼</span>
+                </div>
+                <div class="toc-items">
+                    <div class="toc-item" onclick="scrollToSection('section-a-1')">A.1 TA-Lib编译失败</div>
+                    <div class="toc-item" onclick="scrollToSection('section-a-2')">A.2 数据库连接失败</div>
+                    <div class="toc-item" onclick="scrollToSection('section-a-3')">A.3 环境变量配置错误</div>
+                    <div class="toc-item" onclick="scrollToSection('section-a-4')">A.4 服务启动异常</div>
+                    <div class="toc-item" onclick="scrollToSection('section-a-5')">A.5 数据迁移丢失</div>
+                    <div class="toc-item" onclick="scrollToSection('section-a-6')">A.6 性能问题排查</div>
+                </div>
+            </div>
+
+            <!-- 附录B -->
+            <div class="toc-section">
+                <div class="toc-section-title" onclick="toggleSection(this)">
+                    附录B 一键脚本汇总
+                    <span class="toc-toggle">▼</span>
+                </div>
+                <div class="toc-items">
+                    <div class="toc-item" onclick="scrollToSection('section-b-1')">B.1 单容器脚本</div>
+                    <div class="toc-item" onclick="scrollToSection('section-b-2')">B.2 多容器脚本</div>
+                    <div class="toc-item" onclick="scrollToSection('section-b-3')">B.3 运维脚本</div>
+                </div>
+            </div>
+        </nav>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+        <!-- 第一章 系统概述 -->
+        <div class="chapter" id="chapter1">
+            <h1 class="chapter-title">第一章 系统概述</h1>
+
+            <h2 class="section-title" id="section-1-1">1.1 系统架构</h2>
+            <p>FDAS（金融数据抓取与分析系统）采用六层架构设计，包括基础设施层、数据采集层、数据存储层、后端服务层、前端展示层和集成对接层。</p>
+
+            <div class="code-block">
+                <div class="language">架构图</div>
+<pre>
+┌─────────────────────────────────────────────────────────────────┐
+│                     第七层：预留扩展层                            │
+│  (通用数据源、数据备份、Token监控、性能监控等)                     │
+├─────────────────────────────────────────────────────────────────┤
+│                     第六层：集成对接层                            │
+│                     (飞书 Webhook 告警推送)                       │
+├─────────────────────────────────────────────────────────────────┤
+│                     第五层：前端展示层                            │
+│  Vue 3 + Element Plus + ECharts + Pinia + Vite                  │
+├─────────────────────────────────────────────────────────────────┤
+│                     第四层：后端服务层                            │
+│  FastAPI + SQLAlchemy 2.0 + Pydantic + APScheduler              │
+├─────────────────────────────────────────────────────────────────┤
+│                     第三层：数据存储层                            │
+│                     PostgreSQL 16                                │
+├─────────────────────────────────────────────────────────────────┤
+│                     第二层：数据采集层                            │
+│  Python + AKShare + APScheduler + tenacity + TA-Lib             │
+├─────────────────────────────────────────────────────────────────┤
+│                     第一层：基础设施层                            │
+│               Docker Desktop + Linux容器                         │
+└─────────────────────────────────────────────────────────────────┘
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-1-2">1.2 技术栈清单</h2>
+
+            <table>
+                <tr><th>层级</th><th>技术</th><th>版本</th><th>说明</th></tr>
+                <tr><td>基础设施</td><td>Docker</td><td>24+</td><td>容器化部署</td></tr>
+                <tr><td></td><td>PostgreSQL</td><td>16</td><td>最新稳定版</td></tr>
+                <tr><td>后端</td><td>Python</td><td>3.13</td><td>异步支持完善</td></tr>
+                <tr><td></td><td>FastAPI</td><td>0.110+</td><td>高性能API框架</td></tr>
+                <tr><td></td><td>SQLAlchemy</td><td>2.0+</td><td>异步ORM</td></tr>
+                <tr><td></td><td>TA-Lib</td><td>0.4.28</td><td>技术指标库</td></tr>
+                <tr><td></td><td>AKShare</td><td>1.18+</td><td>金融数据采集</td></tr>
+                <tr><td>前端</td><td>Vue</td><td>3.4+</td><td>Composition API</td></tr>
+                <tr><td></td><td>Element Plus</td><td>2.5+</td><td>UI组件库</td></tr>
+                <tr><td></td><td>ECharts</td><td>5.5+</td><td>金融图表</td></tr>
+                <tr><td></td><td>Vite</td><td>5.0+</td><td>构建工具</td></tr>
+            </table>
+
+            <h2 class="section-title" id="section-1-3">1.3 部署前提条件</h2>
+
+            <div class="alert alert-warning">
+                <strong>⚠️ 环境要求：</strong>
+                <ul>
+                    <li>Docker 24+ 和 Docker Compose已安装</li>
+                    <li>至少4GB可用内存</li>
+                    <li>至少20GB可用磁盘空间</li>
+                    <li>网络可访问外部数据源（AKShare）</li>
+                </ul>
+            </div>
+
+            <div class="alert alert-error">
+                <strong>🔒 安全要求：</strong>
+                <ul>
+                    <li>SESSION_SECRET必须配置（至少32字符）</li>
+                    <li>数据库密码必须修改（非默认值）</li>
+                    <li>首次登录后立即修改admin密码</li>
+                    <li>CORS配置为实际域名（非localhost）</li>
+                </ul>
+            </div>
+
+            <h2 class="section-title" id="section-1-4">1.4 部署方案说明</h2>
+
+            <p>本指南提供两套部署方案：</p>
+
+            <table>
+                <tr><th>方案</th><th>适用场景</th><th>特点</th></tr>
+                <tr><td><strong>单容器部署</strong></td><td>小规模部署、测试环境、资源受限场景</td><td>部署简单、资源占用少、单进程管理</td></tr>
+                <tr><td><strong>多容器部署</strong></td><td>生产环境、需要独立扩展、高可用场景</td><td>容器分离、独立扩展、易于维护</td></tr>
+            </table>
+
+            <p>推荐生产环境使用<strong>多容器部署方案</strong>，便于后续扩展和维护。</p>
+        </div>
+
+        <!-- 第二章 单容器部署方案 -->
+        <div class="chapter" id="chapter2">
+            <h1 class="chapter-title">第二章 单容器部署方案</h1>
+
+            <h2 class="section-title" id="section-2-1">2.1 方案架构</h2>
+            <p>单容器部署方案将所有服务部署在同一个Linux容器内，使用不同用户隔离服务进程。</p>
+
+            <div class="code-block">
+                <div class="language">架构</div>
+<pre>
+单个Linux容器:
+├── PostgreSQL（postgres用户，UID 999）
+│   └── 数据目录: /var/lib/postgresql/data
+│
+├── FastAPI后端（fdas-backend用户，UID 1001）
+│   ├── 应用目录: /opt/fdas/backend
+│   └── 端口: 8001（内部）
+│
+├── Nginx前端（fdas-frontend用户，UID 1002）
+│   ├── 静态文件: /opt/fdas/frontend/dist
+│   └── 端口: 8000（外部）
+│
+└── Supervisor进程管理
+    └── 配置: /opt/fdas/config/supervisord.conf
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-2-2">2.2 用户隔离设计</h2>
+
+            <table>
+                <tr><th>用户</th><th>UID</th><th>用途</th><th>权限范围</th></tr>
+                <tr><td>postgres</td><td>999</td><td>运行PostgreSQL</td><td>/var/lib/postgresql/*</td></tr>
+                <tr><td>fdas-backend</td><td>1001</td><td>运行FastAPI</td><td>/opt/fdas/backend/*</td></tr>
+                <tr><td>fdas-frontend</td><td>1002</td><td>前端静态文件</td><td>/opt/fdas/frontend/dist/*</td></tr>
+            </table>
+
+            <h2 class="section-title" id="section-2-3">2.3 一键部署脚本</h2>
+
+            <p>使用deploy.sh脚本一键完成部署：</p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 进入部署目录
+cd deployment-packages/single-container
+
+# 创建环境变量文件
+cp config/.env.template .env
+vim .env  # 编辑配置
+
+# 执行一键部署
+./deploy.sh --env-file .env --action deploy
+
+# 验证部署
+curl http://localhost:8000/api/health
+</pre>
+            </div>
+
+            <p><strong>deploy.sh支持的操作：</strong></p>
+
+            <table>
+                <tr><th>操作</th><th>命令</th><th>说明</th></tr>
+                <tr><td>部署</td><td>--action deploy</td><td>构建镜像并启动服务</td></tr>
+                <tr><td>停止</td><td>--action stop</td><td>停止所有服务</td></tr>
+                <tr><td>重启</td><td>--action restart</td><td>重启所有服务</td></tr>
+                <tr><td>日志</td><td>--action logs</td><td>查看服务日志</td></tr>
+                <tr><td>状态</td><td>--action status</td><td>查看服务状态</td></tr>
+            </table>
+
+            <h2 class="section-title" id="section-2-4">2.4 手动部署步骤</h2>
+
+            <p>如需手动部署，按以下步骤执行：</p>
+
+            <h3 class="subsection-title">Step 1: 安装系统依赖</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+cd deployment-packages/single-container/scripts
+./install-system.sh
+</pre>
+            </div>
+
+            <h3 class="subsection-title">Step 2: 创建用户和目录</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+./setup-users.sh
+</pre>
+            </div>
+
+            <h3 class="subsection-title">Step 3: 安装Python依赖</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+./install-python.sh
+</pre>
+            </div>
+
+            <h3 class="subsection-title">Step 4: 初始化数据库</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+./init-database.sh
+</pre>
+            </div>
+
+            <h3 class="subsection-title">Step 5: 启动Supervisor</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+supervisord -c /opt/fdas/config/supervisord.conf
+supervisorctl status
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-2-5">2.5 配置文件说明</h2>
+
+            <h3 class="subsection-title">环境变量配置 (.env)</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 数据库配置
+DB_PASSWORD=your-secure-db-password-here
+
+# Session安全配置（必须32+字符）
+SESSION_SECRET=change-this-in-production-min-32-characters
+
+# 调试模式（生产必须false）
+DEBUG=false
+
+# CORS配置
+ALLOWED_ORIGINS=["https://your-domain.com"]
+
+# 应用端口
+APP_PORT=8000
+</pre>
+            </div>
+
+            <h3 class="subsection-title">Supervisor配置</h3>
+            <p>Supervisor管理PostgreSQL、FastAPI、Nginx三个进程，配置文件位于<code>config/supervisord.conf</code>。</p>
+
+            <h2 class="section-title" id="section-2-6">2.6 应对措施</h2>
+
+            <div class="alert alert-info">
+                <strong>TA-Lib编译失败：</strong>
+                <p>如遇TA-Lib编译失败，可使用预编译二进制包：</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+# Debian/Ubuntu
+apt-get install -y libta-lib0 libta-lib0-dev
+
+# 或使用conda
+conda install -c conda-forge ta-lib
+</pre>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>PostgreSQL启动失败：</strong>
+                <p>检查数据目录权限和初始化状态：</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+# 检查权限
+ls -la /var/lib/postgresql/data
+
+# 重新初始化
+rm -rf /var/lib/postgresql/data/*
+su - postgres -c "initdb -D /var/lib/postgresql/data"
+</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- 第三章 多容器部署方案 -->
+        <div class="chapter" id="chapter3">
+            <h1 class="chapter-title">第三章 多容器部署方案</h1>
+
+            <h2 class="section-title" id="section-3-1">3.1 方案架构</h2>
+            <p>多容器部署方案使用Docker Compose编排前后端容器和数据库容器，实现服务分离。</p>
+
+            <div class="code-block">
+                <div class="language">架构</div>
+<pre>
+Docker Compose编排:
+├── fdas-db容器
+│   ├── 镜像: postgres:16-alpine
+│   ├── 端口: 5432
+│   ├── 卷: fdas-db-data
+│   └── 网络: fdas-network
+│
+├── fdas-app容器
+│   ├── 镜像: 多阶段构建（前端+后端）
+│   ├── 端口: 8000
+│   ├── 卷: fdas-logs, fdas-data
+│   ├── 网络: fdas-network
+│   └── 健康检查: /api/health
+│
+└── Docker网络
+    └── fdas-network (172.28.0.0/16)
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-3-2">3.2 Docker Compose配置</h2>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">yaml</div>
+<pre>
+version: '3.8'
+
+services:
+  fdas-db:
+    image: postgres:16-alpine
+    container_name: fdas-db
+    environment:
+      POSTGRES_USER: fdas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fdas}
+      POSTGRES_DB: fdas
+    volumes:
+      - fdas-db-data:/var/lib/postgresql/data
+      - ../../docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fdas"]
+      interval: 10s
+      retries: 5
+
+  fdas-app:
+    build:
+      context: ../../
+      dockerfile: deployment-packages/multi-container/Dockerfile.app
+    container_name: fdas-app
+    environment:
+      DATABASE_URL: postgresql+asyncpg://fdas:${DB_PASSWORD}@fdas-db:5432/fdas
+      SESSION_SECRET: ${SESSION_SECRET}
+    depends_on:
+      fdas-db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+
+volumes:
+  fdas-db-data:
+  fdas-logs:
+
+networks:
+  fdas-network:
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-3-3">3.3 一键部署脚本</h2>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 进入部署目录
+cd deployment-packages/multi-container
+
+# 创建环境变量文件
+cp config/.env.template .env
+vim .env
+
+# 执行一键部署
+./deploy.sh --action deploy
+
+# 验证部署
+curl http://localhost:8000/api/health
+docker ps
+</pre>
+            </div>
+
+            <p><strong>deploy.sh支持的操作：</strong></p>
+
+            <table>
+                <tr><th>操作</th><th>命令</th><th>说明</th></tr>
+                <tr><td>部署</td><td>--action deploy</td><td>构建镜像并启动服务</td></tr>
+                <tr><td>停止</td><td>--action stop</td><td>停止所有容器</td></tr>
+                <tr><td>重启</td><td>--action restart</td><td>重启所有容器</td></tr>
+                <tr><td>日志</td><td>--action logs</td><td>查看容器日志</td></tr>
+                <tr><td>状态</td><td>--action status</td><td>查看容器状态</td></tr>
+                <tr><td>备份</td><td>--action backup</td><td>备份数据</td></tr>
+                <tr><td>清理</td><td>--action clean</td><td>清理容器和卷</td></tr>
+            </table>
+
+            <h2 class="section-title" id="section-3-4">3.4 数据备份恢复</h2>
+
+            <h3 class="subsection-title">数据备份</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 完整备份
+./scripts/backup.sh --full
+
+# 仅数据备份
+./scripts/backup.sh --data-only
+
+# 仅Schema备份
+./scripts/backup.sh --schema-only
+
+# 备份文件位置
+ls -la /var/backups/fdas/
+</pre>
+            </div>
+
+            <h3 class="subsection-title">数据恢复</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 使用最新备份恢复
+./scripts/restore.sh
+
+# 指定备份文件恢复
+./scripts/restore.sh --backup-file /var/backups/fdas/fdas_db_20260417.dump
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-3-5">3.5 应对措施</h2>
+
+            <div class="alert alert-info">
+                <strong>容器启动失败：</strong>
+                <p>检查容器日志和健康检查状态：</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+# 查看容器日志
+docker logs fdas-app
+docker logs fdas-db
+
+# 检查健康状态
+docker inspect fdas-db --format='{{.State.Health.Status}}'
+
+# 重启单个容器
+docker-compose restart fdas-app
+</pre>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>数据库连接失败：</strong>
+                <p>检查网络和数据库状态：</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+# 检查网络
+docker network inspect fdas-network
+
+# 测试数据库连接
+docker exec fdas-app curl fdas-db:5432
+docker exec fdas-db pg_isready -U fdas
+
+# 检查数据库日志
+docker logs fdas-db | tail -50
+</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- 第四章 迁移方案 -->
+        <div class="chapter" id="chapter4">
+            <h1 class="chapter-title">第四章 迁移方案</h1>
+
+            <h2 class="section-title" id="section-4-1">4.1 数据迁移</h2>
+            <p>从单容器迁移到多容器，首先备份数据：</p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 进入迁移目录
+cd deployment-packages/migration
+
+# 执行数据备份
+./migrate-data.sh --source-container fdas-single
+
+# 备份位置
+ls -la /tmp/fdas_migration/
+</pre>
+            </div>
+
+            <p>数据备份内容包括：</p>
+            <ul>
+                <li>数据库完整备份（PostgreSQL自定义格式）</li>
+                <li>应用数据卷备份（日志、配置）</li>
+                <li>环境变量备份</li>
+            </ul>
+
+            <h2 class="section-title" id="section-4-2">4.2 服务迁移</h2>
+            <p>数据备份完成后，执行服务迁移：</p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 执行服务迁移（会自动部署多容器方案）
+./migrate-service.sh
+
+# 迁移完成后验证
+curl http://localhost:8000/api/health
+docker ps
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-4-3">4.3 回滚机制</h2>
+            <p>如迁移失败，可执行回滚恢复到单容器方案：</p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 执行回滚
+./rollback.sh
+
+# 回滚验证
+curl http://localhost:8000/api/health
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-4-4">4.4 迁移验证清单</h2>
+
+            <p>迁移完成后，请逐项验证：</p>
+
+            <table>
+                <tr><th>检查项</th><th>验证方法</th><th>预期结果</th></tr>
+                <tr><td>容器状态</td><td>docker ps</td><td>fdas-db和fdas-app运行</td></tr>
+                <tr><td>健康检查</td><td>curl /api/health</td><td>返回200</td></tr>
+                <tr><td>表数量</td><td>SELECT COUNT(*)</td><td>大于10</td></tr>
+                <tr><td>用户数据</td><td>SELECT COUNT(*) FROM users</td><td>大于0</td></tr>
+                <tr><td>登录功能</td><td>浏览器测试</td><td>可正常登录</td></tr>
+            </table>
+        </div>
+
+        <!-- 第五章 增量更新 -->
+        <div class="chapter" id="chapter5">
+            <h1 class="chapter-title">第五章 增量更新</h1>
+
+            <h2 class="section-title" id="section-5-1">5.1 版本升级流程</h2>
+
+            <p>使用upgrade.sh脚本执行版本升级：</p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 进入更新目录
+cd deployment-packages/update
+
+# 模拟升级（不实际执行）
+./upgrade.sh --version 2.1.0 --dry-run
+
+# 执行升级
+./upgrade.sh --version 2.1.0
+
+# 验证版本
+curl http://localhost:8000/api/health
+</pre>
+            </div>
+
+            <p>升级流程：</p>
+            <ol>
+                <li>获取当前版本并创建备份</li>
+                <li>检查版本变更日志</li>
+                <li>执行数据库迁移（如有）</li>
+                <li>拉取新版本代码</li>
+                <li>构建新版本镜像</li>
+                <li>部署并验证</li>
+            </ol>
+
+            <h2 class="section-title" id="section-5-2">5.2 数据库迁移模板</h2>
+            <p>数据库迁移脚本模板位于<code>versions/migrations.sql</code>：</p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">sql</div>
+<pre>
+-- 版本 X.X.X 数据库迁移脚本
+
+-- 添加新字段
+ALTER TABLE forex_symbols ADD COLUMN IF NOT EXISTS decimal_places INTEGER DEFAULT 4;
+
+-- 创建新表
+CREATE TABLE IF NOT EXISTS forex_intraday (...);
+
+-- 创建索引
+CREATE INDEX IF NOT EXISTS idx_name ON table_name(column);
+
+-- 更新版本记录
+INSERT INTO system_info (key, value) VALUES ('db_version', 'X.X.X')
+ON CONFLICT (key) DO UPDATE SET value = 'X.X.X';
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-5-3">5.3 回滚机制</h2>
+
+            <p>如升级失败，执行回滚：</p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 回滚到指定版本
+./rollback.sh --version 2.0.1
+
+# 验证回滚
+curl http://localhost:8000/api/health
+</pre>
+            </div>
+        </div>
+
+        <!-- 第六章 日常运维 -->
+        <div class="chapter" id="chapter6">
+            <h1 class="chapter-title">第六章 日常运维</h1>
+
+            <h2 class="section-title" id="section-6-1">6.1 fdas-ops运维脚本</h2>
+            <p>fdas-ops.sh是日常运维主脚本，提供统一的运维接口：</p>
+
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 显示帮助
+./scripts/ops/fdas-ops.sh help
+
+# 启动服务（默认多容器方案）
+./scripts/ops/fdas-ops.sh start
+
+# 启动服务（单容器方案）
+./scripts/ops/fdas-ops.sh start --方案 single
+
+# 停止服务
+./scripts/ops/fdas-ops.sh stop
+
+# 重启服务
+./scripts/ops/fdas-ops.sh restart
+
+# 查看状态
+./scripts/ops/fdas-ops.sh status
+
+# 查看日志
+./scripts/ops/fdas-ops.sh logs -f
+
+# 健康检查
+./scripts/ops/fdas-ops.sh health
+
+# 数据备份
+./scripts/ops/fdas-ops.sh backup --full
+
+# 数据恢复
+./scripts/ops/fdas-ops.sh restore
+
+# 查看版本
+./scripts/ops/fdas-ops.sh version
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-6-2">6.2 常用运维场景</h2>
+
+            <h3 class="subsection-title">场景1: 服务异常重启</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 查看服务状态
+./fdas-ops.sh status
+
+# 查看错误日志
+./fdas-ops.sh logs | grep -i error
+
+# 重启服务
+./fdas-ops.sh restart
+
+# 验证恢复
+./fdas-ops.sh health
+</pre>
+            </div>
+
+            <h3 class="subsection-title">场景2: 定期数据备份</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 每日完整备份（建议配置cron）
+./fdas-ops.sh backup --full
+
+# 备份文件位置
+ls -la /var/backups/fdas/
+
+# 清理旧备份（脚本自动清理30天前备份）
+</pre>
+            </div>
+
+            <h3 class="subsection-title">场景3: 性能监控</h3>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode(this)">复制</button>
+                <div class="language">bash</div>
+<pre>
+# 检查容器资源使用
+docker stats fdas-db fdas-app
+
+# 检查API响应时间
+curl -w "Time: %{time_total}s\n" http://localhost:8000/api/health
+
+# 检查数据库查询性能
+docker exec fdas-db psql -U fdas -d fdas -c "SELECT * FROM pg_stat_activity;"
+</pre>
+            </div>
+
+            <h2 class="section-title" id="section-6-3">6.3 监控与告警</h2>
+
+            <p>建议配置以下监控项：</p>
+
+            <table>
+                <tr><th>监控项</th><th>检查方法</th><th>告警阈值</th></tr>
+                <tr><td>服务健康</td><td>/api/health</td><td>连续3次失败</td></tr>
+                <tr><td>容器状态</td><td>docker ps</td><td>容器停止</td></tr>
+                <tr><td>磁盘空间</td><td>df -h</td><td>使用率>80%</td></tr>
+                <tr><td>内存使用</td><td>docker stats</td><td>使用率>90%</td></tr>
+                <tr><td>API响应时间</td><td>curl -w</td><td>超过500ms</td></tr>
+            </table>
+        </div>
+
+        <!-- 附录A 常见问题与应对措施 -->
+        <div class="chapter" id="appendix-a">
+            <h1 class="chapter-title">附录A 常见问题与应对措施</h1>
+
+            <h2 class="section-title" id="section-a-1">A.1 TA-Lib编译失败</h2>
+
+            <div class="alert alert-error">
+                <strong>问题描述：</strong>
+                <p>执行pip install TA-Lib时报编译错误，缺少C库。</p>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>应对措施：</strong>
+                <ol>
+                    <li>安装TA-Lib C库：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+tar -xzf ta-lib-0.4.0-src.tar.gz
+cd ta-lib/
+./configure --prefix=/usr
+make && make install
+ldconfig
+</pre>
+                        </div>
+                    </li>
+                    <li>或使用系统包管理器：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+# Ubuntu/Debian
+apt-get install -y libta-lib0 libta-lib0-dev
+
+# CentOS/RHEL
+yum install -y ta-lib
+</pre>
+                        </div>
+                    </li>
+                    <li>或使用conda：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+conda install -c conda-forge ta-lib
+</pre>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+
+            <h2 class="section-title" id="section-a-2">A.2 数据库连接失败</h2>
+
+            <div class="alert alert-error">
+                <strong>问题描述：</strong>
+                <p>后端启动时报"connection refused"或"database does not exist"错误。</p>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>应对措施：</strong>
+                <ol>
+                    <li>检查PostgreSQL状态：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+# 容器方案
+docker exec fdas-db pg_isready -U fdas
+
+# 单容器方案
+su - postgres -c "pg_isready"
+</pre>
+                        </div>
+                    </li>
+                    <li>检查数据库是否存在：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+docker exec fdas-db psql -U fdas -l
+</pre>
+                        </div>
+                    </li>
+                    <li>初始化数据库：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+docker exec fdas-db psql -U fdas -d fdas -f /docker-entrypoint-initdb.d/init-db.sql
+</pre>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+
+            <h2 class="section-title" id="section-a-3">A.3 环境变量配置错误</h2>
+
+            <div class="alert alert-error">
+                <strong>问题描述：</strong>
+                <p>启动时报"SESSION_SECRET not configured"或长度不足错误。</p>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>应对措施：</strong>
+                <ol>
+                    <li>生成安全密钥：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+</pre>
+                        </div>
+                    </li>
+                    <li>更新.env文件：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+SESSION_SECRET=<生成的密钥>
+</pre>
+                        </div>
+                    </li>
+                    <li>重启服务：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+./fdas-ops.sh restart
+</pre>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+
+            <h2 class="section-title" id="section-a-4">A.4 服务启动异常</h2>
+
+            <div class="alert alert-error">
+                <strong>问题描述：</strong>
+                <p>服务启动后健康检查失败，或容器反复重启。</p>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>应对措施：</strong>
+                <ol>
+                    <li>查看容器日志：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+docker logs fdas-app --tail=100
+docker logs fdas-db --tail=100
+</pre>
+                        </div>
+                    </li>
+                    <li>检查端口冲突：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+netstat -tlnp | grep 8000
+netstat -tlnp | grep 5432
+</pre>
+                        </div>
+                    </li>
+                    <li>检查资源限制：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+docker stats
+df -h
+free -m
+</pre>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+
+            <h2 class="section-title" id="section-a-5">A.5 数据迁移丢失</h2>
+
+            <div class="alert alert-error">
+                <strong>问题描述：</strong>
+                <p>迁移后数据不完整或丢失。</p>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>应对措施：</strong>
+                <ol>
+                    <li>验证备份完整性：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+pg_restore -l backup.dump | head -20
+</pre>
+                        </div>
+                    </li>
+                    <li>恢复数据：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+./fdas-ops.sh restore
+</pre>
+                        </div>
+                    </li>
+                    <li>或执行回滚：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+cd deployment-packages/migration
+./rollback.sh
+</pre>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+
+            <h2 class="section-title" id="section-a-6">A.6 性能问题排查</h2>
+
+            <div class="alert alert-error">
+                <strong>问题描述：</strong>
+                <p>API响应慢，数据库查询慢，前端加载慢。</p>
+            </div>
+
+            <div class="alert alert-success">
+                <strong>应对措施：</strong>
+                <ol>
+                    <li>检查数据库性能：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+docker exec fdas-db psql -U fdas -d fdas -c "SELECT * FROM pg_stat_activity;"
+docker exec fdas-db psql -U fdas -d fdas -c "SELECT * FROM pg_stat_database;"
+</pre>
+                        </div>
+                    </li>
+                    <li>检查慢查询：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+# 启用慢查询日志（postgresql.conf）
+log_min_duration_statement = 1000
+</pre>
+                        </div>
+                    </li>
+                    <li>优化索引：
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyCode(this)">复制</button>
+<pre>
+# 分析查询
+EXPLAIN ANALYZE SELECT * FROM forex_daily WHERE symbol_id = 'xxx';
+
+# 创建索引
+CREATE INDEX idx_symbol_date ON forex_daily(symbol_id, date DESC);
+</pre>
+                        </div>
+                    </li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- 附录B 一键脚本汇总 -->
+        <div class="chapter" id="appendix-b">
+            <h1 class="chapter-title">附录B 一键脚本汇总</h1>
+
+            <h2 class="section-title" id="section-b-1">B.1 单容器脚本</h2>
+
+            <table>
+                <tr><th>脚本路径</th><th>用途</th><th>参数</th></tr>
+                <tr><td>single-container/deploy.sh</td><td>一键部署</td><td>--action deploy|stop|restart|logs|status</td></tr>
+                <tr><td>single-container/scripts/install-system.sh</td><td>安装系统依赖</td><td>无</td></tr>
+                <tr><td>single-container/scripts/setup-users.sh</td><td>创建用户</td><td>无</td></tr>
+                <tr><td>single-container/scripts/install-python.sh</td><td>安装Python依赖</td><td>无</td></tr>
+                <tr><td>single-container/scripts/init-database.sh</td><td>初始化数据库</td><td>无</td></tr>
+            </table>
+
+            <h2 class="section-title" id="section-b-2">B.2 多容器脚本</h2>
+
+            <table>
+                <tr><th>脚本路径</th><th>用途</th><th>参数</th></tr>
+                <tr><td>multi-container/deploy.sh</td><td>一键部署</td><td>--action deploy|stop|restart|logs|status|backup|clean</td></tr>
+                <tr><td>multi-container/scripts/backup.sh</td><td>数据备份</td><td>--full|--data-only|--schema-only</td></tr>
+                <tr><td>multi-container/scripts/restore.sh</td><td>数据恢复</td><td>--backup-file</td></tr>
+            </table>
+
+            <h2 class="section-title" id="section-b-3">B.3 运维脚本</h2>
+
+            <table>
+                <tr><th>脚本路径</th><th>用途</th><th>参数</th></tr>
+                <tr><td>scripts/ops/fdas-ops.sh</td><td>运维主脚本</td><td>start|stop|restart|status|logs|health|backup|restore|version</td></tr>
+                <tr><td>scripts/ops/start.sh</td><td>启动服务</td><td>--方案 single|multi</td></tr>
+                <tr><td>scripts/ops/stop.sh</td><td>停止服务</td><td>--方案 single|multi</td></tr>
+                <tr><td>scripts/ops/restart.sh</td><td>重启服务</td><td>--方案 single|multi</td></tr>
+                <tr><td>scripts/ops/status.sh</td><td>查看状态</td><td>--方案 single|multi</td></tr>
+                <tr><td>scripts/ops/logs.sh</td><td>查看日志</td><td>-f（跟随）</td></tr>
+                <tr><td>scripts/ops/health.sh</td><td>健康检查</td><td>--方案 single|multi</td></tr>
+                <tr><td>scripts/ops/backup.sh</td><td>数据备份</td><td>--full|--data-only</td></tr>
+                <tr><td>scripts/ops/restore.sh</td><td>数据恢复</td><td>--方案 single|multi</td></tr>
+            </table>
+        </div>
+
+        <!-- 底部导航 -->
+        <div class="footer-nav">
+            <a href="#chapter1" class="footer-nav-link">← 第一章 系统概述</a>
+            <span>|</span>
+            <a href="#appendix-a" class="footer-nav-link">附录A 常见问题 →</a>
+        </div>
+    </main>
+
+    <!-- JavaScript -->
+    <script>
+        // 目录折叠
+        function toggleSection(title) {
+            const section = title.parentElement;
+            section.classList.toggle('collapsed');
+            title.classList.toggle('active');
+        }
+
+        // 滚动到章节
+        function scrollToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                // 更新目录项active状态
+                document.querySelectorAll('.toc-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                event.target.classList.add('active');
+            }
+        }
+
+        // 复制代码
+        function copyCode(btn) {
+            const codeBlock = btn.parentElement;
+            const code = codeBlock.querySelector('pre').textContent;
+
+            navigator.clipboard.writeText(code).then(() => {
+                btn.textContent = '已复制';
+                setTimeout(() => {
+                    btn.textContent = '复制';
+                }, 2000);
+            });
+        }
+
+        // 搜索功能
+        function performSearch() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const resultsDiv = document.getElementById('searchResults');
+
+            if (query.length < 2) {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+
+            // 搜索内容
+            const chapters = document.querySelectorAll('.chapter');
+            const results = [];
+
+            chapters.forEach(chapter => {
+                const title = chapter.querySelector('.chapter-title').textContent;
+                const content = chapter.textContent.toLowerCase();
+
+                if (content.includes(query)) {
+                    // 找到匹配的章节和段落
+                    const sections = chapter.querySelectorAll('.section-title');
+                    sections.forEach(section => {
+                        if (section.textContent.toLowerCase().includes(query) ||
+                            section.nextElementSibling?.textContent.toLowerCase().includes(query)) {
+                            results.push({
+                                title: title,
+                                section: section.textContent,
+                                id: section.id,
+                                context: extractContext(section, query)
+                            });
+                        }
+                    });
+
+                    if (results.length === 0 || !sections.length) {
+                        results.push({
+                            title: title,
+                            section: '',
+                            id: chapter.id,
+                            context: extractContext(chapter, query)
+                        });
+                    }
+                }
+            });
+
+            // 显示结果
+            if (results.length > 0) {
+                resultsDiv.innerHTML = results.slice(0, 10).map(r => `
+                    <div class="search-result-item" onclick="scrollToSection('${r.id}')">
+                        <div class="search-result-title">${r.title}</div>
+                        <div class="search-result-context">${r.section} - ${r.context}</div>
+                    </div>
+                `).join('');
+                resultsDiv.style.display = 'block';
+            } else {
+                resultsDiv.innerHTML = '<div class="search-result-item">无匹配结果</div>';
+                resultsDiv.style.display = 'block';
+            }
+        }
+
+        // 提取上下文
+        function extractContext(element, query) {
+            const text = element.textContent;
+            const index = text.toLowerCase().indexOf(query);
+            if (index === -1) return '';
+
+            const start = Math.max(0, index - 20);
+            const end = Math.min(text.length, index + query.length + 50);
+            return text.substring(start, end).replace(/\s+/g, ' ');
+        }
+
+        // 搜索框键盘事件
+        document.getElementById('searchInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                document.getElementById('searchResults').style.display = 'none';
+            }
+        });
+
+        // 点击其他区域关闭搜索结果
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.search-box')) {
+                document.getElementById('searchResults').style.display = 'none';
+            }
+        });
+
+        // 滚动监听更新目录状态
+        window.addEventListener('scroll', function() {
+            const chapters = document.querySelectorAll('.chapter');
+            let currentChapter = null;
+
+            chapters.forEach(chapter => {
+                const rect = chapter.getBoundingClientRect();
+                if (rect.top <= 100) {
+                    currentChapter = chapter;
+                }
+            });
+
+            if (currentChapter) {
+                // 更新目录项active状态
+                document.querySelectorAll('.toc-section-title').forEach(title => {
+                    title.classList.remove('active');
+                    if (title.textContent.includes(currentChapter.querySelector('.chapter-title')?.textContent.split(' ').slice(0, 3).join(' '))) {
+                        title.classList.add('active');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

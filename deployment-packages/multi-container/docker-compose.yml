@@ -1,0 +1,134 @@
+version: '3.8'
+
+# FDAS多容器部署方案 - Docker Compose配置
+# 前后端容器 + 数据库容器分离
+# 生产级配置
+#
+# 关键依赖说明:
+# - bcrypt>=4.0.0    : 密码哈希（admin用户密码必需）
+# - psycopg2-binary  : APScheduler PostgreSQL同步驱动（asyncpg不满足）
+# - slowapi>=0.1.9   : API速率限制
+#
+# 数据库Schema注意事项:
+# - apscheduler_jobs.next_run_time使用NUMERIC(24,6)存储Unix timestamp
+# - APScheduler需要同步驱动psycopg2，非asyncpg
+# - init-db.sql中admin密码使用bcrypt哈希(rounds=12)
+
+services:
+  # ==================== PostgreSQL数据库容器 ====================
+  fdas-db:
+    image: postgres:16-alpine
+    container_name: fdas-db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: fdas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fdas}
+      POSTGRES_DB: fdas
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+    volumes:
+      # 数据持久化
+      - fdas-db-data:/var/lib/postgresql/data
+      # 初始化脚本
+      - ../../docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fdas -d fdas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    networks:
+      - fdas-network
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ==================== 前后端应用容器 ====================
+  fdas-app:
+    build:
+      context: ../../
+      dockerfile: deployment-packages/multi-container/Dockerfile.app
+      args:
+        PYTHON_VERSION: "3.13"
+        NODE_VERSION: "20"
+
+    container_name: fdas-app
+    restart: unless-stopped
+
+    environment:
+      # 数据库连接
+      DATABASE_URL: postgresql+asyncpg://fdas:${DB_PASSWORD:-fdas}@fdas-db:5432/fdas
+      # Session安全配置
+      # ⚠️ SESSION_SECRET必须至少32字符，生产环境禁止使用默认值
+      # 自动生成: python -c "import secrets; print(secrets.token_urlsafe(32))"
+      # 默认值仅供开发/测试环境使用，生产部署必须显式配置
+      SESSION_SECRET: ${SESSION_SECRET:-fdas-dev-secret-key-change-in-production}
+      # 调试模式
+      DEBUG: ${DEBUG:-false}
+      # CORS配置
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-["http://localhost:8000"]}
+      # IP验证（可选）
+      ENABLE_IP_VALIDATION: ${ENABLE_IP_VALIDATION:-false}
+      # 应用端口
+      APP_PORT: ${APP_PORT:-8000}
+
+    ports:
+      - "${APP_PORT:-8000}:8000"
+
+    depends_on:
+      fdas-db:
+        condition: service_healthy
+
+    volumes:
+      # 日志持久化
+      - fdas-logs:/app/logs
+      # 数据持久化（可选）
+      - fdas-data:/app/data
+
+    networks:
+      - fdas-network
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+# ==================== 网络配置 ====================
+networks:
+  fdas-network:
+    driver: bridge
+    name: fdas-network
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ==================== 存储卷配置 ====================
+volumes:
+  fdas-db-data:
+    driver: local
+    name: fdas-db-data
+
+  fdas-logs:
+    driver: local
+    name: fdas-logs
+
+  fdas-data:
+    driver: local
+    name: fdas-data
