@@ -23,9 +23,13 @@
 
 | 依赖包 | 版本要求 | 用途 | 缺失影响 |
 |--------|---------|------|---------|
-| `bcrypt` | >=4.0.0 | 密码哈希算法 | 登录时 `ModuleNotFoundError: No module named 'bcrypt'` |
+| `bcrypt` | >=4.0.0 | 密码哈希算法（init-db.sql中admin密码使用bcrypt rounds=12） | 登录时 `ModuleNotFoundError: No module named 'bcrypt'` |
 | `psycopg2-binary` | >=2.9.0 | APScheduler PostgreSQL同步驱动 | 调度器启动失败 `ModuleNotFoundError: No module named 'psycopg2'` |
-| `slowapi` | >=0.1.9 | API速率限制 | login接口返回 `INTERNAL_ERROR` |
+| `slowapi` | >=0.1.9 | API速率限制（login接口必需） | login接口返回 `INTERNAL_ERROR` |
+
+**注意**: init-db.sql中默认admin用户密码为`admin123`，使用bcrypt算法(rounds=12)哈希存储。
+密码哈希值: `$2b$12$fhlKutShR.oSCYLHLIZvI.iMwPv.LuGEsVar3bj7.GHmRe.KL2eAq`
+因此bcrypt依赖是**系统必需依赖**，缺失会导致所有用户无法登录。
 
 ### 1.2 APScheduler特殊依赖说明
 
@@ -82,6 +86,14 @@ deploy.sh脚本会自动验证SESSION_SECRET：
 
 - 长度检查：必须 >= 32字符
 - 默认值检测：检测包含 `change-this` 或 `dev-secret` 的值并发出警告
+
+**重要说明**: 环境变量传递有两层机制：
+1. **Shell脚本层面**: `source .env` 加载环境变量到shell进程（用于验证）
+2. **Docker Compose层面**: docker-compose.yml中的`${VAR:-default}`语法从shell环境注入到容器
+
+两者是**独立路径**，shell验证成功不代表容器内配置正确。
+deploy.sh已处理此问题：当.env不存在时自动生成SESSION_SECRET并写入.env文件，
+然后通过docker-compose.yml的后备值机制确保容器内配置一致。
 
 ### 2.3 生产环境配置示例
 
@@ -203,17 +215,52 @@ async def login(request_body: LoginRequest, request: Request):
 
 **原因**: main.py未配置StaticFiles挂载
 
+**静态文件路径说明**:
+- Dockerfile.app将前端构建产物复制到容器内 `/app/static/` 目录
+- main.py需要挂载StaticFiles指向此路径
+- 前端index.html位于 `/app/static/index.html`
+- 前端资源位于 `/app/static/assets/`
+
 **解决方案**:
 main.py已配置：
 ```python
 # 静态文件服务配置
-STATIC_DIR = Path("/app/static")
+STATIC_DIR = Path("/app/static")  # 容器内静态文件路径
 if STATIC_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"))
+    # 挂载静态资源目录
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+    
     # SPA路由支持
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(STATIC_DIR / "index.html")
 ```
 
-### 4.6 SESSION_SECRET验证失败
+### 4.7 健康检查curl依赖
+
+**症状**: 健康检查命令执行失败
+
+**原因**: curl命令未安装或不可用
+
+**说明**: Dockerfile.app已安装curl用于健康检查，但以下场景可能缺失：
+- 手动执行健康检查命令时本地环境无curl
+- 自定义Dockerfile未包含curl安装
+
+**解决方案**:
+Dockerfile.app已安装curl：
+```dockerfile
+# 安装运行时依赖（包含curl用于健康检查）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+手动检查时可使用wget替代：
+```bash
+wget -q -O /dev/null http://localhost:8000/api/health && echo "OK" || echo "FAIL"
+```
+
+### 4.8 SESSION_SECRET验证失败
 
 **症状**: deploy.sh报错 `SESSION_SECRET 长度不足32字符`
 
@@ -324,3 +371,45 @@ docker exec -it fdas-db psql -U fdas -d fdas
 | 环境变量模板 | `deployment-packages/multi-container/config/.env.template` |
 | 数据库初始化 | `docker/init-db.sql` |
 | Python依赖 | `backend/requirements.txt` |
+
+### C. 部署后验证流程
+
+部署完成后，按以下顺序验证系统功能：
+
+```bash
+# 1. 容器状态验证
+docker ps --filter "name=fdas"
+# 预期: fdas-app和fdas-db均显示"(healthy)"
+
+# 2. API健康检查
+curl http://localhost:8000/api/health
+# 预期: {"status":"healthy","version":"2.0.1"}
+
+# 3. 前端首页验证
+curl -s http://localhost:8000/ | grep -c "index.html"
+# 预期: 输出数字>0（包含index.html）
+
+# 4. 登录API验证
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+# 预期: {"success":true,"data":{"user":...,"session_id":...}}
+
+# 5. APScheduler状态验证
+docker logs fdas-app --tail 20 | grep -i "scheduler"
+# 预期: 包含"APScheduler调度器已启动"
+
+# 6. 数据库表验证
+docker exec fdas-db psql -U fdas -d fdas -c "\dt"
+# 预期: 显示11张表（users, sessions, markets等）
+```
+
+### D. 故障排查快速定位
+
+| 现象 | 可能原因 | 快速定位命令 |
+|------|---------|-------------|
+| 容器启动失败 | 依赖缺失/配置错误 | `docker logs fdas-app --tail 50` |
+| 登录返回500 | bcrypt/slowapi问题 | `docker exec fdas-app pip show bcrypt` |
+| 前端404 | StaticFiles未配置 | `docker exec fdas-app ls /app/static/` |
+| APScheduler错误 | psycopg2/类型问题 | `docker exec fdas-db psql -U fdas -d fdas -c "\d apscheduler_jobs"` |
+| 数据库连接失败 | 密码/网络问题 | `docker exec fdas-db pg_isready -U fdas` |
