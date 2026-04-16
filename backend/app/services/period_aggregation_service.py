@@ -5,12 +5,15 @@
 
 Author: FDAS Team
 Created: 2026-04-14
+Updated: 2026-04-16 - 使用calculate_ema公共函数
 """
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, date
 from collections import defaultdict
 import calendar
+
+from app.utils.technical_utils import calculate_ema
 
 
 class PeriodType:
@@ -291,7 +294,7 @@ class PeriodAggregationService:
         # 聚合数据
         aggregated_data = self.aggregate(daily_data, period_type)
 
-        # 计算技术指标
+        # 聚合数据并计算技术指标
         tech_service = TechnicalService()
 
         # 计算均线
@@ -299,17 +302,45 @@ class PeriodAggregationService:
         closes = [float(item.get("close", 0)) for item in aggregated_data]
 
         for period in ma_periods:
+            key = f"ma{period}"
+            ma_values = []
             if len(closes) >= period:
-                ma_values = tech_service.calculate_ma(closes, period)
-                ma_data[f"ma{period}"] = [{"value": v} for v in ma_values]
+                for i in range(period - 1, len(closes)):
+                    ma_value = sum(closes[i - period + 1:i + 1]) / period
+                    ma_values.append({"value": round(ma_value, 4)})
+            ma_data[key] = ma_values
 
-        # 计算MACD
-        macd_data = tech_service.calculate_macd(
-            closes,
-            macd_params.get("fast", 12),
-            macd_params.get("slow", 26),
-            macd_params.get("signal", 9)
-        )
+        # 计算MACD（使用纯数值）
+        fast = macd_params.get("fast", 12)
+        slow = macd_params.get("slow", 26)
+        signal = macd_params.get("signal", 9)
+
+        if len(closes) < slow + signal:
+            macd_data = {"dif": [], "dea": [], "macd": []}
+        else:
+            # 使用公共EMA函数计算MACD
+            ema_fast = calculate_ema(closes, fast)
+            ema_slow = calculate_ema(closes, slow)
+
+            dif_values = []
+            for i in range(slow - 1, len(ema_fast)):
+                dif = ema_fast[i] - ema_slow[i - (slow - fast)]
+                dif_values.append(round(dif, 4))
+
+            if len(dif_values) < signal:
+                macd_data = {"dif": dif_values, "dea": [], "macd": []}
+            else:
+                dea_values = calculate_ema(dif_values, signal)
+                macd_values = []
+                for i in range(len(dea_values)):
+                    macd = dif_values[i + signal - 1] - dea_values[i]
+                    macd_values.append(round(macd, 4))
+                dif_result = dif_values[signal - 1:] if len(dif_values) >= signal else []
+                macd_data = {
+                    "dif": dif_result,
+                    "dea": [round(v, 4) for v in dea_values],
+                    "macd": macd_values
+                }
 
         return {
             "data": aggregated_data,

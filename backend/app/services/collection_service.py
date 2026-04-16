@@ -10,7 +10,7 @@ Updated: 2026-04-10 - 适配ForexDailyService和symbol_id
 
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import logging
@@ -121,14 +121,14 @@ class CollectionService:
             # 创建执行日志
             log = CollectionTaskLog(
                 task_id=task.id,
-                run_at=datetime.utcnow(),
+                run_at=datetime.now(timezone.utc),
                 status="running",
             )
             db.add(log)
             await db.commit()
             await db.refresh(log)
 
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
 
             try:
                 # 确定采集日期范围
@@ -150,14 +150,14 @@ class CollectionService:
                 )
 
                 # 更新日志
-                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
                 log.status = "success"
                 log.records_count = records_count
                 log.duration_ms = duration_ms
                 log.message = f"成功采集 {records_count} 条数据"
 
                 # 更新任务状态
-                task.last_run_at = datetime.utcnow()
+                task.last_run_at = datetime.now(timezone.utc)
                 task.last_status = "success"
                 task.last_message = log.message
                 task.last_records_count = records_count
@@ -173,13 +173,13 @@ class CollectionService:
 
             except Exception as e:
                 # 更新日志为失败
-                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
                 log.status = "failed"
                 log.message = str(e)
                 log.duration_ms = duration_ms
 
                 # 更新任务状态
-                task.last_run_at = datetime.utcnow()
+                task.last_run_at = datetime.now(timezone.utc)
                 task.last_status = "failed"
                 task.last_message = str(e)
 

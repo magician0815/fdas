@@ -9,7 +9,7 @@ Created: 2026-04-10
 
 from sqlalchemy import Column, String, Boolean, DateTime, Date, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -45,5 +45,5 @@ class ForexSymbol(Base):
     quote_currency = Column(String(10), comment="计价货币")
     is_active = Column(Boolean, default=True, index=True, comment="是否启用")
     first_trade_date = Column(Date, comment="首次交易日期")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")

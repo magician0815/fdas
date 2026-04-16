@@ -16,7 +16,7 @@ Created: 2026-04-14
 
 from sqlalchemy import Column, String, Boolean, DateTime, Text, Numeric, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -60,5 +60,5 @@ class FuturesVariety(Base):
     last_trade_day_rule = Column(Text, comment="最后交易日规则描述")
     description = Column(Text, comment="品种描述说明")
     is_active = Column(Boolean, default=True, index=True, comment="是否启用")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")

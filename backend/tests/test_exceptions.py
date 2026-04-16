@@ -150,7 +150,7 @@ class TestValidationExceptionHandler:
 
         response = await validation_exception_handler(mock_request, mock_error)
 
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == 422  # HTTP_422
         import json
         body = json.loads(response.body)
         assert body["success"] is False

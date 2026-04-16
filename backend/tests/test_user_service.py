@@ -137,7 +137,7 @@ class TestCreateUser:
     @pytest.mark.asyncio
     async def test_create_user_none_password_raises_error(self, user_service_instance, mock_db_session):
         """测试None密码应抛出错误."""
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises((TypeError, AttributeError, ValueError)):
             await user_service_instance.create_user(
                 mock_db_session,
                 username="testuser",
@@ -184,8 +184,8 @@ class TestCreateUser:
     # 3. 无效类型
     @pytest.mark.asyncio
     async def test_create_user_integer_username_accepts_input(self, user_service_instance, mock_db_session):
-        """测试整数用户名（底层会转换，业务层应校验）."""
-        # SQLAlchemy底层可能接受整数并转换
+        """测试整数用户名（底层会转换为字符串）."""
+        # SQLAlchemy底层会将整数转为字符串
         mock_db_session.refresh.side_effect = lambda obj: setattr(obj, 'id', uuid4())
 
         user = await user_service_instance.create_user(
@@ -194,8 +194,8 @@ class TestCreateUser:
             password="Password123!"
         )
 
-        # 底层行为：整数会被转为字符串
-        assert user.username == 12345
+        # 底层行为：整数被转为字符串
+        assert user.username == "12345"
 
     @pytest.mark.asyncio
     async def test_create_user_invalid_role_raises_error(self, user_service_instance, mock_db_session):

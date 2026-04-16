@@ -10,7 +10,7 @@ Updated: 2026-04-11 - 新增CollectionTaskValidateRequest和ValidateResult模型
 
 from typing import Optional, List
 from datetime import date, datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from uuid import UUID
 
 
@@ -56,14 +56,16 @@ class CollectionTaskValidateRequest(BaseModel):
 
 class ValidateResult(BaseModel):
     """校验结果模型."""
-    valid: bool = Field(..., description="是否通过校验")
-    errors: List[str] = Field(default=[], description="错误信息列表")
-    warnings: List[str] = Field(default=[], description="警告信息列表")
-    info: dict = Field(default={}, description="附加信息")
+    valid: bool = Field(default=True, description="是否通过校验")
+    errors: List[str] = Field(default_factory=list, description="错误信息列表")
+    warnings: List[str] = Field(default_factory=list, description="警告信息列表")
+    info: dict = Field(default_factory=dict, description="附加信息")
 
 
 class CollectionTaskResponse(BaseModel):
     """采集任务响应."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     datasource_id: UUID
@@ -81,12 +83,11 @@ class CollectionTaskResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class CollectionTaskLogResponse(BaseModel):
     """采集任务日志响应."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     task_id: UUID
     run_at: datetime
@@ -95,9 +96,6 @@ class CollectionTaskLogResponse(BaseModel):
     message: Optional[str]
     duration_ms: Optional[int]
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class TaskExecuteRequest(BaseModel):

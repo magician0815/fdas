@@ -1,7 +1,8 @@
 # FDAS Backend Dockerfile
 # 金融数据抓取与分析系统 - 后端容器镜像
+# Python 3.13 环境
 
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # 设置工作目录
 WORKDIR /app

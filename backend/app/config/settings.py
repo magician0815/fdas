@@ -51,7 +51,7 @@ class EnvConfig(BaseSettings):
     """
 
     DATABASE_URL: str = "postgresql+asyncpg://fdas:fdas@localhost:5432/fdas"
-    SESSION_SECRET: str = "change-this-in-production"
+    SESSION_SECRET: str = ""  # 强制从环境变量加载
     DEBUG: bool = False
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]
     APP_PORT: int = 8000

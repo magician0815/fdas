@@ -10,7 +10,7 @@ Updated: 2026-04-11 - 新增volume字段
 
 from sqlalchemy import Column, String, Date, Numeric, DateTime, ForeignKey, UniqueConstraint, BigInteger
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -57,4 +57,4 @@ class ForexDaily(Base):
     change_pct = Column(Numeric(10, 4), comment="涨跌幅（百分比）")
     change_amount = Column(Numeric(10, 4), comment="涨跌额")
     amplitude = Column(Numeric(10, 4), comment="振幅（百分比）")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="数据更新时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="数据更新时间")

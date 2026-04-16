@@ -123,7 +123,7 @@ async def validation_exception_handler(
 
     logger.warning(f"ValidationError: {message}")
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=422,  # 使用数字避免DeprecationWarning
         content={
             "success": False,
             "data": None,

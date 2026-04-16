@@ -6,6 +6,7 @@
 Author: FDAS Team
 Created: 2026-04-03
 Updated: 2026-04-14 - 返回多条均线和MACD完整数据
+Updated: 2026-04-16 - 使用calculate_ema公共函数
 """
 
 from typing import List, Dict
@@ -13,6 +14,7 @@ import logging
 
 from app.models.forex_daily import ForexDaily
 from app.config.settings import settings
+from app.utils.technical_utils import calculate_ema
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +109,15 @@ class TechnicalService:
 
         Args:
             data: 日线数据列表
-            fast: 快线周期（默认12）
-            slow: 慢线周期（默认26）
-            signal: 信号线周期（默认9）
+            fast: 快线周期（默认12，必须>0）
+            slow: 慢线周期（默认26，必须>0）
+            signal: 信号线周期（默认9，必须>0）
 
         Returns:
             Dict: MACD数据（dif, dea, macd）
+
+        Raises:
+            ValueError: 参数无效（负数或零）
         """
         if fast is None:
             fast = settings.DEFAULT_MACD_FAST
@@ -120,6 +125,10 @@ class TechnicalService:
             slow = settings.DEFAULT_MACD_SLOW
         if signal is None:
             signal = settings.DEFAULT_MACD_SIGNAL
+
+        # 参数验证：周期必须为正整数
+        if fast <= 0 or slow <= 0 or signal <= 0:
+            raise ValueError(f"MACD参数必须为正整数: fast={fast}, slow={slow}, signal={signal}")
 
         close_prices = [float(d.close) for d in data if d.close]
 
@@ -130,26 +139,9 @@ class TechnicalService:
                 "macd": [],
             }
 
-        # 计算EMA
-        def ema(prices, period):
-            """计算EMA.
-
-            Note: Caller ensures len(prices) >= period before calling.
-            """
-            # 第一个EMA值用SMA
-            sma = sum(prices[:period]) / period
-            ema_values = [sma]
-
-            multiplier = 2 / (period + 1)
-            for i in range(period, len(prices)):
-                new_ema = (prices[i] - ema_values[-1]) * multiplier + ema_values[-1]
-                ema_values.append(new_ema)
-
-            return ema_values
-
         # 计算DIF = EMA(fast) - EMA(slow)
-        ema_fast = ema(close_prices, fast)
-        ema_slow = ema(close_prices, slow)
+        ema_fast = calculate_ema(close_prices, fast)
+        ema_slow = calculate_ema(close_prices, slow)
 
         # DIF从 slow-1 开始有数据
         dif_values = []
@@ -165,7 +157,7 @@ class TechnicalService:
                 "macd": [],
             }
 
-        dea_values = ema(dif_values, signal)
+        dea_values = calculate_ema(dif_values, signal)
 
         # 计算MACD柱 = DIF - DEA
         macd_values = []

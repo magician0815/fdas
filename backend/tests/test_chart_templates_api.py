@@ -10,7 +10,7 @@ Created: 2026-04-15
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import FastAPI, Depends
 from httpx import AsyncClient, ASGITransport
 
@@ -38,8 +38,8 @@ def mock_template():
         config={"ma_periods": [5, 10, 20]},
         is_public=False,
         creator_id=uuid4(),
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
 
@@ -155,8 +155,8 @@ class TestListTemplates:
             config={},
             is_public=True,
             creator_id=uuid4(),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         from app.api.v1.chart_templates import require_login, get_db

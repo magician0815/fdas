@@ -10,7 +10,7 @@ Created: 2026-04-14
 
 from typing import Dict, Any, List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 
@@ -88,7 +88,7 @@ class ChartTemplateService:
         Returns:
             保存的模板对象
         """
-        template_id = f"template_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{str(user_id)[:8]}"
+        template_id = f"template_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{str(user_id)[:8]}"
 
         # 创建配置记录
         setting = UserChartSetting(
@@ -100,8 +100,8 @@ class ChartTemplateService:
                 "description": description,
                 "config": template_config,
                 "is_public": is_public,
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
         )
 
@@ -118,8 +118,8 @@ class ChartTemplateService:
             config=template_config,
             is_public=is_public,
             creator_id=user_id,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
     async def load_template(
@@ -295,7 +295,7 @@ class ChartTemplateService:
             elif key == "is_public":
                 current_value["is_public"] = value
 
-        current_value["updated_at"] = datetime.utcnow().isoformat()
+        current_value["updated_at"] = datetime.now(timezone.utc).isoformat()
         setting.setting_value = current_value
 
         await db.commit()

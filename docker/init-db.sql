@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_data JSONB NOT NULL,
+    ip_address VARCHAR(45) NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
@@ -42,6 +43,7 @@ COMMENT ON TABLE sessions IS '用户登录会话信息表';
 COMMENT ON COLUMN sessions.id IS '会话唯一标识ID';
 COMMENT ON COLUMN sessions.user_id IS '关联用户ID';
 COMMENT ON COLUMN sessions.session_data IS '会话数据';
+COMMENT ON COLUMN sessions.ip_address IS '创建会话时的IP地址（IPv4/IPv6）';
 COMMENT ON COLUMN sessions.created_at IS '创建时间';
 COMMENT ON COLUMN sessions.expires_at IS '过期时间';
 
@@ -318,8 +320,11 @@ CREATE INDEX IF NOT EXISTS idx_apscheduler_jobs_next_run_time ON apscheduler_job
 -- ============================================
 
 -- 插入默认admin用户
+-- ⚠️ 安全警告: 默认密码为 'admin123'，生产环境部署后必须立即修改！
+-- 密码哈希使用bcrypt算法(rounds=12)，对应明文密码 'admin123'
+-- 首次登录后请通过用户管理界面修改密码
 INSERT INTO users (username, password_hash, role)
-VALUES ('admin', '$2b$12$LQv3c1yqBWVHxkd0L5qN.$2b$12$LQv3c1yqBWVHxkd0L5qN.placeholder', 'admin')
+VALUES ('admin', '$2b$12$fhlKutShR.oSCYLHLIZvI.iMwPv.LuGEsVar3bj7.GHmRe.KL2eAq', 'admin')
 ON CONFLICT (username) DO NOTHING;
 
 -- 插入市场类型数据

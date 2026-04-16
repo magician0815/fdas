@@ -181,10 +181,14 @@ class AKShareCollector:
         """
         同步调用AKShare forex_hist接口.
 
+        注意：akshare 1.18+版本使用forex_hist_em接口，
+        该接口不支持日期范围参数，返回全部历史数据。
+        日期筛选在collect_forex_hist方法中进行。
+
         Args:
-            symbol_name: 货币对名称（中文）
-            start_date: 开始日期
-            end_date: 结束日期
+            symbol_name: 货币对名称（中文）或代码（英文，如USDCNH）
+            start_date: 开始日期（用于数据筛选）
+            end_date: 结束日期（用于数据筛选）
 
         Returns:
             DataFrame: AKShare返回的数据
@@ -195,18 +199,21 @@ class AKShareCollector:
             logger.error("AKShare库未安装，请运行: pip install akshare")
             raise ImportError("AKShare库未安装")
 
-        # 转换日期格式为YYYYMMDD字符串
-        start_str = start_date.strftime("%Y%m%d")
-        end_str = end_date.strftime("%Y%m%d")
+        # akshare 1.18+版本使用forex_hist_em接口
+        # 获取全部历史数据，后续在collect_forex_hist中筛选
+        logger.debug(f"调用forex_hist_em接口: symbol={symbol_name}")
 
-        logger.debug(f"调用forex_hist接口: symbol={symbol_name}, start={start_str}, end={end_str}")
+        # 转换中文货币对名称为英文代码
+        symbol_mapping = {
+            "美元人民币": "USDCNH",
+            "欧元美元": "EURUSD",
+            "英镑美元": "GBPUSD",
+            "日元美元": "USDJPY",
+        }
+        symbol_code = symbol_mapping.get(symbol_name, symbol_name)
 
-        # 调用forex_hist接口（使用中文货币对名称）
-        df = ak.forex_hist(
-            symbol=symbol_name,
-            start_date=start_str,
-            end_date=end_str,
-        )
+        # 调用forex_hist_em接口（使用英文货币对代码）
+        df = ak.forex_hist_em(symbol=symbol_code)
 
         return df
 
@@ -231,8 +238,8 @@ class AKShareCollector:
 
         records = []
 
-        # AKShare forex_hist返回字段：
-        # 日期、开盘价、收盘价、最高价、最低价、成交量、涨跌幅、涨跌额、振幅
+        # AKShare forex_hist_em返回字段：
+        # 日期, 代码, 名称, 今开, 最新价, 最高, 最低, 振幅
         for _, row in df.iterrows():
             # 处理日期字段
             raw_date = row.get("日期")
@@ -247,15 +254,16 @@ class AKShareCollector:
             else:
                 trade_date = raw_date
 
+            # 字段映射：今开->open, 最新价->close, 最高->high, 最低->low
             record = {
                 "symbol_code": symbol_code,
                 "date": trade_date,
-                "open": self._safe_float(row.get("开盘价")),
-                "high": self._safe_float(row.get("最高价")),
-                "low": self._safe_float(row.get("最低价")),
-                "close": self._safe_float(row.get("收盘价")),
-                "change_pct": self._safe_float(row.get("涨跌幅")),
-                "change_amount": self._safe_float(row.get("涨跌额")),
+                "open": self._safe_float(row.get("今开")),
+                "high": self._safe_float(row.get("最高")),
+                "low": self._safe_float(row.get("最低")),
+                "close": self._safe_float(row.get("最新价")),
+                "change_pct": None,  # forex_hist_em不返回涨跌幅
+                "change_amount": None,  # forex_hist_em不返回涨跌额
                 "amplitude": self._safe_float(row.get("振幅")),
             }
             records.append(record)

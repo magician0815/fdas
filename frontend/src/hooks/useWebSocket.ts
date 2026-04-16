@@ -2,12 +2,15 @@
  * WebSocket实时数据连接Hook.
  *
  * 管理WebSocket连接、断线重连、心跳检测、消息处理.
+ * 使用指数退避策略进行重连，避免服务器压力.
  *
  * Author: FDAS Team
  * Created: 2026-04-14
+ * Updated: 2026-04-16 - 添加指数退避重连策略
  */
 
 import { ref, onMounted, onUnmounted, watch } from 'vue'
+import logger from '@/services/logger'
 
 // WebSocket配置
 interface WebSocketConfig {
@@ -15,8 +18,12 @@ interface WebSocketConfig {
   url: string
   /** 心跳间隔（毫秒） */
   heartbeatInterval?: number
-  /** 重连间隔（毫秒） */
+  /** 初始重连间隔（毫秒） */
   reconnectInterval?: number
+  /** 最大重连间隔（毫秒） */
+  maxReconnectInterval?: number
+  /** 重连间隔倍数（指数退避） */
+  reconnectMultiplier?: number
   /** 最大重连次数 */
   maxReconnectAttempts?: number
   /** 自动重连 */
@@ -33,6 +40,8 @@ interface WebSocketState {
   reconnecting: boolean
   /** 重连次数 */
   reconnectAttempts: number
+  /** 当前重连间隔 */
+  currentReconnectInterval: number
   /** 最后心跳时间 */
   lastHeartbeat: Date | null
   /** 连接错误 */
@@ -52,10 +61,12 @@ interface WSMessage {
  * WebSocket连接Hook.
  */
 export function useWebSocket(config: WebSocketConfig) {
-  // 默认配置
+  // 默认配置 - 使用指数退避
   const defaultConfig = {
     heartbeatInterval: 30000,
-    reconnectInterval: 5000,
+    reconnectInterval: 1000,      // 初始1秒
+    maxReconnectInterval: 30000,  // 最大30秒
+    reconnectMultiplier: 2,       // 每次翻倍
     maxReconnectAttempts: 10,
     autoReconnect: true
   }
@@ -71,6 +82,7 @@ export function useWebSocket(config: WebSocketConfig) {
     connecting: false,
     reconnecting: false,
     reconnectAttempts: 0,
+    currentReconnectInterval: finalConfig.reconnectInterval,
     lastHeartbeat: null,
     error: null
   })
@@ -103,6 +115,7 @@ export function useWebSocket(config: WebSocketConfig) {
         state.value.connecting = false
         state.value.reconnecting = false
         state.value.reconnectAttempts = 0
+        state.value.currentReconnectInterval = finalConfig.reconnectInterval  // 重置为初始间隔
 
         // 启动心跳
         startHeartbeat()
@@ -118,13 +131,13 @@ export function useWebSocket(config: WebSocketConfig) {
           const message: WSMessage = JSON.parse(event.data)
           handleMessage(message)
         } catch (e) {
-          console.error('WebSocket消息解析失败:', e)
+          logger.error('WebSocket消息解析失败:', e)
         }
       }
 
       ws.onerror = (error) => {
         state.value.error = 'WebSocket连接错误'
-        console.error('WebSocket错误:', error)
+        logger.error('WebSocket错误:', error)
 
         if (messageHandlers.has('error')) {
           messageHandlers.get('error')?.({ error: '连接错误' })
@@ -191,14 +204,27 @@ export function useWebSocket(config: WebSocketConfig) {
   }
 
   /**
-   * 安排重连.
+   * 安排重连（使用指数退避策略）.
    */
   const scheduleReconnect = (): void => {
     state.value.reconnecting = true
 
+    // 计算当前重连间隔（指数退避）
+    const delay = Math.min(
+      state.value.currentReconnectInterval,
+      finalConfig.maxReconnectInterval
+    )
+
+    logger.info(`WebSocket将在${delay}ms后重连（第${state.value.reconnectAttempts + 1}次）`)
+
     reconnectTimer = setTimeout(() => {
+      // 指数增长下一次重连间隔
+      state.value.currentReconnectInterval = Math.min(
+        state.value.currentReconnectInterval * finalConfig.reconnectMultiplier,
+        finalConfig.maxReconnectInterval
+      )
       reconnect()
-    }, finalConfig.reconnectInterval)
+    }, delay)
   }
 
   /**

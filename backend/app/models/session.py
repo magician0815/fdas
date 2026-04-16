@@ -6,11 +6,12 @@ Session模型.
 Author: FDAS Team
 Created: 2026-04-03
 Updated: 2026-04-10 - 添加字段注释
+Updated: 2026-04-16 - 添加IP绑定字段（安全增强）
 """
 
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -26,6 +27,7 @@ class Session(Base):
         id: Session ID（UUID）
         user_id: 用户ID（外键）
         session_data: Session数据（JSON）
+        ip_address: 创建时的IP地址（可选安全验证）
         created_at: 创建时间
         expires_at: 过期时间
     """
@@ -40,5 +42,6 @@ class Session(Base):
         comment="关联用户ID"
     )
     session_data = Column(JSONB, nullable=False, comment="会话数据")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
+    ip_address = Column(String(45), nullable=True, comment="创建会话时的IP地址（IPv4/IPv6）")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True, comment="过期时间")

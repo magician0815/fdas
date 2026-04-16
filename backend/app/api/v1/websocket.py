@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from app.core.database import get_db
-from app.core.deps import get_current_user_ws
+from app.core.deps import get_current_user_ws, require_admin
+from app.models.user import User
 from app.services.websocket_service import ws_manager, websocket_handler
 
 logger = logging.getLogger(__name__)
@@ -95,9 +96,16 @@ async def websocket_chart(
 
 
 @router.get("/ws/stats")
-async def get_websocket_stats():
+async def get_websocket_stats(
+    admin: User = Depends(require_admin),
+):
     """
     获取WebSocket连接统计.
+
+    需要管理员权限访问。
+
+    Returns:
+        dict: WebSocket连接统计信息
     """
     return {
         "total_connections": ws_manager.get_connection_count(),

@@ -21,16 +21,6 @@ export function getCollectionTasks(marketId = null) {
 }
 
 /**
- * 获取采集任务详情.
- *
- * @param {string} taskId - 任务ID
- * @returns {Promise} API响应
- */
-export function getCollectionTask(taskId) {
-  return request.get(`/api/v1/collection-tasks/${taskId}`)
-}
-
-/**
  * 创建采集任务.
  *
  * @param {Object} data - 任务数据

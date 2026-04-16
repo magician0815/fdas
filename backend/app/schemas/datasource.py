@@ -10,7 +10,7 @@ Updated: 2026-04-10 - 适配market_id新字段
 
 from typing import Optional, List, Dict, Any
 from datetime import date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from uuid import UUID
 
 
@@ -45,6 +45,8 @@ class DataSourceUpdate(BaseModel):
 
 class DataSourceResponse(BaseModel):
     """数据源响应."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     market_id: Optional[UUID]
@@ -57,9 +59,6 @@ class DataSourceResponse(BaseModel):
     is_active: bool
     created_at: date
     updated_at: date
-
-    class Config:
-        from_attributes = True
 
 
 class SymbolInfo(BaseModel):

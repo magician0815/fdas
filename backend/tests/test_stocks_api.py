@@ -103,6 +103,25 @@ class TestStocksAPIPublic:
         assert "data" in data
 
     @pytest.mark.asyncio
+    async def test_get_adjustment_data_invalid_type(self):
+        """测试无效复权类型（覆盖行78）."""
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test"
+        ) as client:
+            response = await client.get(
+                "/api/v1/stocks/adjustment",
+                params={
+                    "symbol_id": "test123",
+                    "adjustment_type": "invalid_type"
+                }
+            )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "无效的复权类型" in data["detail"]
+
+    @pytest.mark.asyncio
     async def test_get_dividend_events(self):
         """测试除权除息事件."""
         async with AsyncClient(

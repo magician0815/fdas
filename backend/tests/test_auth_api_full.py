@@ -11,8 +11,11 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from unittest.mock import patch, MagicMock, AsyncMock
 from uuid import uuid4
+from fastapi import FastAPI
 
 from app.main import app
+from app.api.v1.auth import router
+from app.core.database import get_db
 
 
 # =====================
@@ -24,29 +27,33 @@ class TestLoginAPI:
 
     @pytest.mark.asyncio
     async def test_login_user_not_found(self):
-        """Test login with nonexistent user."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test"
-        ) as client:
-            response = await client.post(
-                "/api/v1/auth/login",
-                json={"username": "nonexistent_user_123", "password": "anypassword"},
-            )
+        """Test login with nonexistent user - mock authenticate_user."""
+        # Mock authenticate_user to return None (user not found)
+        with patch('app.api.v1.auth.authenticate_user', AsyncMock(return_value=None)):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/api/v1/auth/login",
+                    json={"username": "nonexistent_user_123", "password": "anypassword"},
+                )
 
         assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_login_invalid_password(self):
-        """Test login with wrong password."""
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test"
-        ) as client:
-            response = await client.post(
-                "/api/v1/auth/login",
-                json={"username": "admin", "password": "wrongpassword"},
-            )
+        """Test login with wrong password - mock authenticate_user."""
+        # Mock authenticate_user to return None (wrong password)
+        with patch('app.api.v1.auth.authenticate_user', AsyncMock(return_value=None)):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/api/v1/auth/login",
+                    json={"username": "admin", "password": "wrongpassword"},
+                )
 
         assert response.status_code == 401
 
@@ -66,7 +73,7 @@ class TestLoginAPI:
         mock_session_service.create_session = AsyncMock(return_value=mock_session)
 
         with patch('app.api.v1.auth.authenticate_user', mock_auth_service):
-            with patch('app.api.v1.auth.SessionService', return_value=mock_session_service):
+            with patch('app.api.v1.auth.session_service', mock_session_service):
                 async with AsyncClient(
                     transport=ASGITransport(app=app),
                     base_url="http://test"
@@ -94,6 +101,32 @@ class TestLoginAPI:
 
         # Should return validation error (422)
         assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_login_authenticate_returns_none(self):
+        """Test login when authenticate_user returns None (covers line 38)."""
+        test_app = FastAPI()
+        mock_db = AsyncMock()
+
+        # Override get_db
+        async def override_get_db():
+            return mock_db
+
+        test_app.dependency_overrides[get_db] = override_get_db
+
+        # Mock authenticate_user to return None
+        with patch('app.api.v1.auth.authenticate_user', AsyncMock(return_value=None)):
+            test_app.include_router(router, prefix="/api/v1/auth")
+
+            async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+                response = await client.post(
+                    "/api/v1/auth/login",
+                    json={"username": "testuser", "password": "testpassword"},
+                )
+
+        assert response.status_code == 401
+        data = response.json()
+        assert "用户名或密码错误" in data["detail"]
 
 
 # =====================

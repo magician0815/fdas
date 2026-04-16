@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
@@ -27,6 +27,7 @@ class SessionService:
         user_id: UUID,
         expires_hours: int = 24,
         session_data: dict = None,
+        ip_address: str = None,
     ) -> Session:
         """
         创建Session.
@@ -36,6 +37,7 @@ class SessionService:
             user_id: 用户ID
             expires_hours: 过期时间（小时）
             session_data: Session数据
+            ip_address: 创建时的IP地址（可选，用于安全验证）
 
         Returns:
             Session: 创建的Session对象
@@ -46,7 +48,8 @@ class SessionService:
         session = Session(
             user_id=user_id,
             session_data=session_data,
-            expires_at=datetime.utcnow() + timedelta(hours=expires_hours),
+            ip_address=ip_address,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=expires_hours),
         )
         db.add(session)
         await db.commit()
@@ -151,7 +154,7 @@ class SessionService:
             int: 删除的Session数量
         """
         result = await db.execute(
-            delete(Session).where(Session.expires_at < datetime.utcnow())
+            delete(Session).where(Session.expires_at < datetime.now(timezone.utc))
         )
         await db.commit()
         return result.rowcount

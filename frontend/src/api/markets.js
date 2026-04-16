@@ -17,13 +17,3 @@ import request from './index'
 export function getMarkets() {
   return request.get('/api/v1/markets')
 }
-
-/**
- * 获取市场类型详情.
- *
- * @param {string} marketId - 市场ID
- * @returns {Promise} API响应
- */
-export function getMarket(marketId) {
-  return request.get(`/api/v1/markets/${marketId}`)
-}

@@ -176,6 +176,7 @@
 
 import { ref, reactive, computed, watch } from 'vue'
 import { Plus, Edit, Delete, Warning } from '@element-plus/icons-vue'
+import { evaluate } from 'mathjs'
 
 // Props定义
 interface Props {
@@ -383,22 +384,13 @@ const calculateIndicator = (formula: string, data: any[]): number[] => {
     BETWEEN: (x: number, a: number, b: number): boolean => x >= a && x <= b
   }
 
-  // 创建计算环境
-  const env = { OPEN, CLOSE, HIGH, LOW, VOLUME, ...functions }
+  // 创建计算环境（用于mathjs scope）
+  const scope = { OPEN, CLOSE, HIGH, LOW, VOLUME, ...functions }
 
-  // 解析并执行公式
-  // 注意：这是一个简化实现，实际应该使用更安全的表达式解析器
+  // 使用mathjs安全解析并执行公式
   try {
-    // 基本安全检查
-    const forbiddenPatterns = /[;{}()]|eval|Function|constructor/
-    if (forbiddenPatterns.test(formula)) {
-      throw new Error('公式包含不安全字符')
-    }
-
-    // 计算公式（简化实现）
-    // 实际应使用表达式解析器如mathjs
-    const result = eval(formula.replace(/CLOSE/g, 'CLOSE').replace(/OPEN/g, 'OPEN').replace(/HIGH/g, 'HIGH').replace(/LOW/g, 'LOW').replace(/VOLUME/g, 'VOLUME'))
-
+    // mathjs会自动处理变量名，无需手动替换
+    const result = evaluate(formula, scope)
     return Array.isArray(result) ? result : [result]
   } catch (e: any) {
     throw new Error(`公式计算失败: ${e.message}`)

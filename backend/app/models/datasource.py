@@ -10,7 +10,7 @@ Updated: 2026-04-10 - 新增market_id字段，添加字段注释
 
 from sqlalchemy import Column, String, DateTime, Boolean, Date, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -48,5 +48,5 @@ class DataSource(Base):
     min_date = Column(Date, comment="接口最早可用数据日期")
     type = Column(String(50), nullable=False, default="akshare", comment="数据源类型")
     is_active = Column(Boolean, default=True, comment="是否启用")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")

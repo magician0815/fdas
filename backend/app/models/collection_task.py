@@ -10,7 +10,7 @@ Updated: 2026-04-10 - 新增market_id、symbol_id字段，添加字段注释
 
 from sqlalchemy import Column, String, DateTime, Boolean, Date, ForeignKey, Integer, Text, Index
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -72,5 +72,5 @@ class CollectionTask(Base):
     last_status = Column(String(20), comment="上次执行状态")
     last_message = Column(Text, comment="上次执行消息")
     last_records_count = Column(Integer, default=0, comment="上次采集记录数")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")

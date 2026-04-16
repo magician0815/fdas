@@ -11,6 +11,8 @@
  * Created: 2026-04-14
  */
 
+import logger from './logger'
+
 // IndexedDB 配置
 const DB_NAME = 'FDAS_Cache'
 const DB_VERSION = 1
@@ -228,7 +230,7 @@ export class KLineCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to check cache:', error)
+      logger.error('Failed to check cache:', error)
       return false
     }
   }
@@ -256,7 +258,7 @@ export class KLineCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to get cache:', error)
+      logger.error('Failed to get cache:', error)
       return null
     }
   }
@@ -298,7 +300,7 @@ export class KLineCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to set cache:', error)
+      logger.error('Failed to set cache:', error)
       throw error
     }
   }
@@ -317,7 +319,7 @@ export class KLineCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to delete cache:', error)
+      logger.error('Failed to delete cache:', error)
       throw error
     }
   }
@@ -335,7 +337,7 @@ export class KLineCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to clear all cache:', error)
+      logger.error('Failed to clear all cache:', error)
       throw error
     }
   }
@@ -375,7 +377,7 @@ export class KLineCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to clear expired cache:', error)
+      logger.error('Failed to clear expired cache:', error)
       return 0
     }
   }
@@ -415,7 +417,7 @@ export class KLineCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to get cache stats:', error)
+      logger.error('Failed to get cache stats:', error)
       return {
         totalEntries: 0,
         totalSize: 0,
@@ -476,7 +478,7 @@ export class KLineCacheService {
 
       await this.setCache(symbolId, period, updatedCache)
     } catch (error) {
-      console.error('Failed to merge cache:', error)
+      logger.error('Failed to merge cache:', error)
       throw error
     }
   }
@@ -514,7 +516,7 @@ export class SymbolsCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to get symbols cache:', error)
+      logger.error('Failed to get symbols cache:', error)
       return null
     }
   }
@@ -548,7 +550,7 @@ export class SymbolsCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to set symbols cache:', error)
+      logger.error('Failed to set symbols cache:', error)
       throw error
     }
   }
@@ -567,7 +569,7 @@ export class SymbolsCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to clear symbols cache:', error)
+      logger.error('Failed to clear symbols cache:', error)
       throw error
     }
   }
@@ -605,7 +607,7 @@ export class ConfigCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to get config cache:', error)
+      logger.error('Failed to get config cache:', error)
       return null
     }
   }
@@ -640,7 +642,7 @@ export class ConfigCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to set config cache:', error)
+      logger.error('Failed to set config cache:', error)
       throw error
     }
   }
@@ -671,7 +673,7 @@ export class MetaCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to get last sync time:', error)
+      logger.error('Failed to get last sync time:', error)
       return null
     }
   }
@@ -699,7 +701,7 @@ export class MetaCacheService {
         request.onerror = () => reject(request.error)
       })
     } catch (error) {
-      console.error('Failed to set last sync time:', error)
+      logger.error('Failed to set last sync time:', error)
       throw error
     }
   }

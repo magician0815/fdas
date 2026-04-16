@@ -3,11 +3,16 @@ FastAPI应用入口.
 
 Author: FDAS Team
 Created: 2026-04-03
-Updated: 2026-04-10 - 注册新API路由，更新启动/关闭事件
+Updated: 2026-04-16 - 添加slowapi速率限制中间件，支持测试环境禁用
 """
 
+import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.config.settings import settings
 from app.config.logging import setup_logging, get_logger
@@ -17,60 +22,66 @@ from app.core.exceptions import register_exception_handlers
 setup_logging()
 logger = get_logger(__name__)
 
-# 创建FastAPI应用实例
-app = FastAPI(
-    title="FDAS - 金融数据抓取与分析系统",
-    description="基于FastAPI构建的金融数据采集与可视化API服务",
-    version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-)
+# 检测是否在测试环境中
+TESTING = os.environ.get("TESTING", "").lower() in ("true", "1", "yes")
 
-# 注册异常处理器
-register_exception_handlers(app)
-
-# CORS中间件配置
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 初始化速率限制器（测试环境禁用）
+limiter = Limiter(key_func=get_remote_address, enabled=not TESTING)
 
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """
-    应用启动事件处理.
+    应用生命周期管理.
 
-    初始化数据库连接池、APScheduler调度器等.
+    使用lifespan handler代替deprecated on_event.
     """
     from app.services.scheduler_service import scheduler_service
     from app.services.collection_service import collection_service
 
-    # 启动调度器
+    # Startup
+    # 安全检查：验证SESSION_SECRET已配置
+    if not settings.SESSION_SECRET:
+        logger.error("SESSION_SECRET未配置，请在环境变量中设置")
+        raise ValueError("SESSION_SECRET must be set in environment variables")
+
     scheduler_service.start()
-
-    # 加载已启用的采集任务
     await collection_service.load_enabled_tasks()
-
     logger.info("应用启动完成")
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    应用关闭事件处理.
-
-    关闭数据库连接池、停止调度器等.
-    """
-    from app.services.scheduler_service import scheduler_service
-
-    # 关闭调度器
+    # Shutdown
     scheduler_service.shutdown(wait=True)
-
     logger.info("应用关闭完成")
+
+
+# 创建FastAPI应用实例
+app = FastAPI(
+    title="FDAS - 金融数据抓取与分析系统",
+    description="基于FastAPI构建的金融数据采集与可视化API服务",
+    version="2.0.1",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    lifespan=lifespan,
+)
+
+# 添加速率限制器状态
+app.state.limiter = limiter
+# 注册速率限制异常处理器
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 注册异常处理器
+register_exception_handlers(app)
+
+# CORS中间件配置 - 收紧安全策略
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # 仅允许必要方法
+    allow_headers=["Content-Type", "X-Session-ID", "Authorization"],  # 仅允许必要headers
+)
 
 
 @app.get("/api/health")
@@ -81,7 +92,7 @@ async def health_check():
     Returns:
         dict: 服务健康状态信息
     """
-    return {"status": "healthy", "version": "1.0.0"}
+    return {"status": "healthy", "version": "2.0.1"}
 
 
 # 注册API路由

@@ -10,7 +10,7 @@ Created: 2026-04-15
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from fastapi import HTTPException, WebSocket, Request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.core.deps import (
@@ -38,7 +38,7 @@ class TestGetCurrentUserWS:
         # Mock Session
         mock_session = MagicMock()
         mock_session.user_id = user_id
-        mock_session.expires_at = datetime.utcnow() + timedelta(hours=24)
+        mock_session.expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
         # Mock DB
         mock_db = AsyncMock()
@@ -64,7 +64,7 @@ class TestGetCurrentUserWS:
         # Mock Session
         mock_session = MagicMock()
         mock_session.user_id = user_id
-        mock_session.expires_at = datetime.utcnow() + timedelta(hours=24)
+        mock_session.expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
         # Mock DB
         mock_db = AsyncMock()
@@ -122,7 +122,7 @@ class TestGetCurrentUserWS:
         mock_session = MagicMock()
         mock_session.user_id = user_id
         mock_session.is_valid = True
-        mock_session.expires_at = datetime.utcnow() - timedelta(hours=1)
+        mock_session.expires_at = datetime.now(timezone.utc) - timedelta(hours=1)
 
         mock_db = AsyncMock()
         mock_result = MagicMock()
@@ -150,7 +150,7 @@ class TestGetCurrentUser:
         # Mock Session
         mock_session = MagicMock()
         mock_session.user_id = user_id
-        mock_session.expires_at = datetime.utcnow() + timedelta(hours=24)
+        mock_session.expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
         # Mock User
         mock_user = MagicMock()
@@ -223,7 +223,7 @@ class TestGetCurrentUser:
         mock_session = MagicMock()
         mock_session.user_id = user_id
         mock_session.is_valid = True
-        mock_session.expires_at = datetime.utcnow() + timedelta(hours=24)
+        mock_session.expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
         mock_db = AsyncMock()
         session_result = MagicMock()

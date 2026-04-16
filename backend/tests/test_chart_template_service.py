@@ -9,7 +9,7 @@ Created: 2026-04-15
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.services.chart_template_service import ChartTemplateService, ChartTemplate
@@ -50,8 +50,8 @@ class TestChartTemplate:
             config={"ma_periods": [5, 10, 20]},
             is_public=False,
             creator_id=uuid4(),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         assert template.template_id == "template_001"
@@ -68,8 +68,8 @@ class TestChartTemplate:
             config={"ma_periods": [5, 10, 20]},
             is_public=False,
             creator_id=creator_id,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         result = template.to_dict()
@@ -140,8 +140,8 @@ class TestLoadTemplate:
             "description": "描述",
             "config": {"ma_periods": [5, 10]},
             "is_public": False,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         mock_setting.user_id = uuid4()
 
@@ -184,8 +184,8 @@ class TestListUserTemplates:
             "description": "",
             "config": {},
             "is_public": False,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         mock_setting1.user_id = user_id
 
@@ -196,8 +196,8 @@ class TestListUserTemplates:
             "description": "",
             "config": {},
             "is_public": False,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         mock_setting2.user_id = user_id
 
@@ -287,8 +287,8 @@ class TestListPublicTemplates:
             "description": "",
             "config": {},
             "is_public": True,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         mock_setting.user_id = uuid4()
 
@@ -327,7 +327,7 @@ class TestApplyTemplateToChart:
         self, service: ChartTemplateService, mock_db_session, user_id
     ):
         """测试成功应用模板到图表."""
-        iso_time = datetime.utcnow().isoformat()
+        iso_time = datetime.now(timezone.utc).isoformat()
 
         # Mock load_template返回
         mock_template_setting = MagicMock()
@@ -392,7 +392,7 @@ class TestUpdateTemplate:
         self, service: ChartTemplateService, mock_db_session, user_id
     ):
         """测试成功更新模板."""
-        iso_time = datetime.utcnow().isoformat()
+        iso_time = datetime.now(timezone.utc).isoformat()
         mock_setting = MagicMock()
         mock_setting.setting_value = {
             "name": "新名称",
@@ -437,7 +437,7 @@ class TestUpdateTemplate:
         self, service: ChartTemplateService, mock_db_session, user_id
     ):
         """测试更新模板所有字段（covers lines 290, 293-296）."""
-        iso_time = datetime.utcnow().isoformat()
+        iso_time = datetime.now(timezone.utc).isoformat()
         mock_setting = MagicMock()
         mock_setting.setting_value = {
             "name": "原名",
@@ -477,7 +477,7 @@ class TestUpdateTemplate:
         self, service: ChartTemplateService, mock_db_session, user_id
     ):
         """测试应用模板到已存在配置（covers line 388）."""
-        iso_time = datetime.utcnow().isoformat()
+        iso_time = datetime.now(timezone.utc).isoformat()
 
         # Mock template setting for load_template
         mock_template_setting = MagicMock()

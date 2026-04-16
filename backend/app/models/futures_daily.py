@@ -11,7 +11,7 @@ Created: 2026-04-14
 
 from sqlalchemy import Column, String, Date, Numeric, DateTime, ForeignKey, UniqueConstraint, BigInteger, Boolean
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -71,4 +71,4 @@ class FuturesDaily(Base):
     oi_change = Column(BigInteger, default=0, comment="持仓量变化")
     is_main_data = Column(Boolean, default=False, index=True, comment="是否为主力合约数据")
     adjusted_price = Column(Numeric(10, 4), comment="挢月调整后价格")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="数据更新时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="数据更新时间")

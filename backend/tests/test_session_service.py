@@ -9,7 +9,7 @@ Created: 2026-04-03
 
 import pytest
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.session_service import SessionService
@@ -53,7 +53,7 @@ async def test_create_session(db_session: AsyncSession, user_service: UserServic
     assert session.user_id == user.id
     # 注意：session.expires_at是timezone-aware，需要用timezone-aware比较
     from datetime import timezone
-    assert session.expires_at.replace(tzinfo=None) > datetime.utcnow()
+    assert session.expires_at.replace(tzinfo=None) > datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @pytest.mark.asyncio

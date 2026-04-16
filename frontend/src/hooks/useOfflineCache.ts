@@ -17,6 +17,7 @@ import {
   SymbolsCacheService,
   KLineCacheData
 } from '@/services/offlineCache'
+import logger from '@/services/logger'
 
 // 网络状态
 const networkStatus = ref<'online' | 'offline' | 'unknown'>('unknown')
@@ -50,7 +51,7 @@ export function useOfflineCache() {
       cacheStats.value = status.klineStats
       lastSyncTimes.value = status.lastSyncTimes
     } catch (error) {
-      console.error('Failed to initialize offline cache:', error)
+      logger.error('Failed to initialize offline cache:', error)
       isInitialized.value = false
       cacheReady.value = false
     }
@@ -74,7 +75,7 @@ export function useOfflineCache() {
       cacheStats.value = status.klineStats
       lastSyncTimes.value = status.lastSyncTimes
     } catch (error) {
-      console.error('Failed to clear cache:', error)
+      logger.error('Failed to clear cache:', error)
     }
   }
 
@@ -89,7 +90,7 @@ export function useOfflineCache() {
       cacheStats.value = stats
       return deletedCount
     } catch (error) {
-      console.error('Failed to clear expired cache:', error)
+      logger.error('Failed to clear expired cache:', error)
       return 0
     }
   }
@@ -103,7 +104,7 @@ export function useOfflineCache() {
       cacheStats.value = status.klineStats
       lastSyncTimes.value = status.lastSyncTimes
     } catch (error) {
-      console.error('Failed to refresh cache stats:', error)
+      logger.error('Failed to refresh cache stats:', error)
     }
   }
 
@@ -163,7 +164,7 @@ export function useKLineCache(symbolId: string, period: string = 'daily') {
       }
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载缓存失败'
-      console.error('Failed to load cache:', err)
+      logger.error('Failed to load cache:', err)
     } finally {
       isLoading.value = false
     }
@@ -203,7 +204,7 @@ export function useKLineCache(symbolId: string, period: string = 'daily') {
       await OfflineCacheService.meta.setLastSyncTime('kline', Date.now())
     } catch (err) {
       error.value = err instanceof Error ? err.message : '保存缓存失败'
-      console.error('Failed to save cache:', err)
+      logger.error('Failed to save cache:', err)
     } finally {
       isLoading.value = false
     }
@@ -245,7 +246,7 @@ export function useKLineCache(symbolId: string, period: string = 'daily') {
       await OfflineCacheService.meta.setLastSyncTime('kline', Date.now())
     } catch (err) {
       error.value = err instanceof Error ? err.message : '合并缓存失败'
-      console.error('Failed to merge cache:', err)
+      logger.error('Failed to merge cache:', err)
     } finally {
       isLoading.value = false
     }
@@ -263,7 +264,7 @@ export function useKLineCache(symbolId: string, period: string = 'daily') {
       hasCache.value = false
     } catch (err) {
       error.value = err instanceof Error ? err.message : '删除缓存失败'
-      console.error('Failed to delete cache:', err)
+      logger.error('Failed to delete cache:', err)
     }
   }
 
@@ -322,7 +323,7 @@ export function useSymbolsCache(marketType: string) {
       cacheData.value = await SymbolsCacheService.getCache(marketType)
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载缓存失败'
-      console.error('Failed to load symbols cache:', err)
+      logger.error('Failed to load symbols cache:', err)
     } finally {
       isLoading.value = false
     }
@@ -346,7 +347,7 @@ export function useSymbolsCache(marketType: string) {
       await OfflineCacheService.meta.setLastSyncTime('symbols', Date.now())
     } catch (err) {
       error.value = err instanceof Error ? err.message : '保存缓存失败'
-      console.error('Failed to save symbols cache:', err)
+      logger.error('Failed to save symbols cache:', err)
     } finally {
       isLoading.value = false
     }
@@ -363,7 +364,7 @@ export function useSymbolsCache(marketType: string) {
       cacheData.value = null
     } catch (err) {
       error.value = err instanceof Error ? err.message : '清除缓存失败'
-      console.error('Failed to clear symbols cache:', err)
+      logger.error('Failed to clear symbols cache:', err)
     }
   }
 
@@ -494,7 +495,7 @@ export function useSmartDataLoader<T>(
       error.value = '无法获取数据：离线状态且无缓存数据'
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载数据失败'
-      console.error('Failed to load data:', err)
+      logger.error('Failed to load data:', err)
     } finally {
       isLoading.value = false
     }

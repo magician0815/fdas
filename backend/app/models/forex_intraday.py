@@ -9,7 +9,7 @@ Created: 2026-04-14
 
 from sqlalchemy import Column, String, DateTime, Numeric, ForeignKey, UniqueConstraint, BigInteger, Index
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -52,7 +52,7 @@ class ForexIntraday(Base):
     low = Column(Numeric(10, 4), comment="最低价")
     close = Column(Numeric(10, 4), comment="收盘价")
     volume = Column(BigInteger, default=0, comment="成交量（外汇数据通常为0）")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="数据更新时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="数据更新时间")
 
     def to_dict(self):
         """转换为字典格式.

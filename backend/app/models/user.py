@@ -10,7 +10,7 @@ Updated: 2026-04-10 - 添加字段注释
 
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -36,5 +36,5 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False, index=True, comment="用户名")
     password_hash = Column(String(255), nullable=False, comment="密码哈希值")
     role = Column(String(20), nullable=False, default="user", comment="用户角色")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")

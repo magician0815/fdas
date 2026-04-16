@@ -503,18 +503,16 @@ class TestCalculateMacd:
         assert True
 
     # === 无效类型 边界值测试 ===
-    def test_calculate_macd_negative_parameters_success(self):
-        """负数参数处理."""
+    def test_calculate_macd_negative_parameters_raises_error(self):
+        """负数参数抛出ValueError."""
         data = create_forex_daily_data(50)
-        result = technical_service.calculate_macd(data, fast=-5, slow=-10, signal=-3)
+        with pytest.raises(ValueError):
+            technical_service.calculate_macd(data, fast=-5, slow=-10, signal=-3)
 
-        # 需根据实际行为调整：可能报错或返回空
-        assert True
-
-    def test_calculate_macd_zero_parameters_raises_zero_division_error(self):
-        """零参数抛出ZeroDivisionError."""
+    def test_calculate_macd_zero_parameters_raises_error(self):
+        """零参数抛出ValueError."""
         data = create_forex_daily_data(50)
-        with pytest.raises(ZeroDivisionError):
+        with pytest.raises(ValueError):
             technical_service.calculate_macd(data, fast=0, slow=0, signal=0)
 
     # === 错误路径 测试 ===

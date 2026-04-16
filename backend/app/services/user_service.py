@@ -5,6 +5,7 @@
 
 Author: FDAS Team
 Created: 2026-04-03
+Updated: 2026-04-16 - 添加类型转换和安全性验证
 """
 
 from typing import List, Optional
@@ -31,13 +32,26 @@ class UserService:
 
         Args:
             db: 数据库会话
-            username: 用户名
-            password: 密码
+            username: 用户名（会转换为字符串）
+            password: 密码（会转换为字符串）
             role: 角色
 
         Returns:
             User: 创建的用户对象
+
+        Note:
+            类型转换在底层完成，业务验证应在API/Schema层执行.
         """
+        # 类型转换：支持各种输入类型
+        if username is not None and not isinstance(username, str):
+            username = str(username)
+        if password is not None and not isinstance(password, str):
+            password = str(password)
+
+        # 安全性检查：None值会导致bcrypt错误，需提前处理
+        if password is None:
+            raise ValueError("密码不能为None")
+
         user = User(
             username=username,
             password_hash=hash_password(password),
@@ -80,17 +94,27 @@ class UserService:
         )
         return result.scalar_one_or_none()
 
-    async def get_users(self, db: AsyncSession) -> List[User]:
+    async def get_users(
+        self,
+        db: AsyncSession,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[User]:
         """
         获取用户列表.
 
         Args:
             db: 数据库会话
+            limit: 返回数量限制（None表示不限制）
+            offset: 偏移量（用于分页）
 
         Returns:
             List[User]: 用户列表
         """
-        result = await db.execute(select(User))
+        query = select(User).offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
+        result = await db.execute(query)
         return result.scalars().all()
 
     async def update_user(

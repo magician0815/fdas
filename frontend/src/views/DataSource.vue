@@ -109,6 +109,7 @@ import { Connection, Refresh, CircleCheck, Edit } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getDatasources, syncSymbolsToDatabase } from '@/api/datasources'
 import { getMarkets } from '@/api/markets'
+import logger from '@/services/logger'
 
 // 数据状态
 const loading = ref(false)
@@ -153,7 +154,7 @@ const fetchMarkets = async () => {
       markets.value = res.data
     }
   } catch (e) {
-    console.error('获取市场列表失败')
+    logger.error('获取市场列表失败', e)
   }
 }
 

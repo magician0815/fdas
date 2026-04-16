@@ -15,6 +15,7 @@ import uuid
 from datetime import date, timedelta
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
+from unittest.mock import patch, AsyncMock
 
 from app.main import app
 from app.models.user import User
@@ -65,20 +66,22 @@ class TestIntegration:
 
     @pytest.mark.asyncio
     async def test_invalid_login(self, client):
-        """测试无效登录."""
-        # 1. 错误密码
-        resp = await client.post(
-            "/api/v1/auth/login",
-            json={"username": "testuser", "password": "wrongpassword"}
-        )
-        assert resp.status_code == 401
+        """测试无效登录 - mock authenticate_user."""
+        # Mock authenticate_user to return None (authentication failed)
+        with patch('app.api.v1.auth.authenticate_user', AsyncMock(return_value=None)):
+            # 1. 错误密码
+            resp = await client.post(
+                "/api/v1/auth/login",
+                json={"username": "testuser", "password": "wrongpassword"}
+            )
+            assert resp.status_code == 401
 
-        # 2. 不存在的用户
-        resp = await client.post(
-            "/api/v1/auth/login",
-            json={"username": "nonexistent", "password": "password"}
-        )
-        assert resp.status_code == 401
+            # 2. 不存在的用户
+            resp = await client.post(
+                "/api/v1/auth/login",
+                json={"username": "nonexistent", "password": "password"}
+            )
+            assert resp.status_code == 401
 
 
 class TestTechnicalIndicatorsIntegration:

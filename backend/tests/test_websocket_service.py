@@ -9,10 +9,11 @@ Created: 2026-04-15
 
 import pytest
 import json
-from unittest.mock import AsyncMock, MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
-from app.services.websocket_service import WebSocketManager
+from app.services.websocket_service import WebSocketManager, ws_manager, websocket_handler
 
 
 @pytest.fixture
@@ -728,3 +729,154 @@ class TestWebSocketManagerCleanup:
 
         # 验证任务已停止
         assert ws_manager.is_running is False
+
+
+class TestWebSocketHandler:
+    """测试websocket_handler函数."""
+
+    @pytest.mark.asyncio
+    async def test_websocket_handler_connection_exception(self):
+        """测试WebSocket连接异常处理（covers lines 327-328）."""
+        # 创建一个会在receive_json时抛出异常的websocket
+        ws = AsyncMock()
+        ws.receive_json = AsyncMock(side_effect=Exception("Connection lost"))
+
+        # 清空manager状态
+        ws_manager.active_connections = {}
+
+        # 调用handler，应该捕获异常并清理
+        await websocket_handler(ws, "test_user")
+
+        # 验证连接已被清理
+        assert "test_user" not in ws_manager.active_connections
+
+    @pytest.mark.asyncio
+    async def test_websocket_handler_subscribe_success(self):
+        """测试WebSocket订阅成功."""
+        ws = AsyncMock()
+        ws.receive_json = AsyncMock(side_effect=[
+            {"type": "subscribe", "symbol_id": "symbol-1"},
+            {"type": "heartbeat_response"},  # 不触发异常，继续循环
+            Exception("Break loop")
+        ])
+        ws.send_json = AsyncMock()
+
+        ws_manager.active_connections = {}
+
+        # 捕获并验证订阅消息
+        await websocket_handler(ws, "test_user")
+
+        # 验证订阅消息被发送（在异常后连接被清理）
+        calls = ws.send_json.call_args_list
+        subscribe_success = any(
+            call[0][0].get("type") == "subscribe_success" for call in calls
+        )
+        assert subscribe_success
+
+    @pytest.mark.asyncio
+    async def test_websocket_handler_json_decode_error(self):
+        """测试WebSocket JSON解析错误."""
+        ws = AsyncMock()
+        ws.receive_json = AsyncMock(side_effect=[
+            json.JSONDecodeError("Invalid JSON", "test", 0),
+            Exception("Break loop")
+        ])
+        ws.send_json = AsyncMock()
+
+        ws_manager.active_connections = {}
+
+        await websocket_handler(ws, "test_user")
+
+        # 验证错误消息被发送
+        ws.send_json.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_websocket_handler_ping_pong(self):
+        """测试WebSocket ping-pong."""
+        ws = AsyncMock()
+        ws.receive_json = AsyncMock(side_effect=[
+            {"type": "ping"},
+            Exception("Break loop")
+        ])
+        ws.send_json = AsyncMock()
+
+        ws_manager.active_connections = {}
+
+        await websocket_handler(ws, "test_user")
+
+        # 验证pong消息被发送
+        calls = ws.send_json.call_args_list
+        pong_sent = any(call[0][0].get("type") == "pong" for call in calls)
+        assert pong_sent
+
+    @pytest.mark.asyncio
+    async def test_websocket_handler_unknown_message_type(self):
+        """测试WebSocket未知消息类型."""
+        ws = AsyncMock()
+        ws.receive_json = AsyncMock(side_effect=[
+            {"type": "unknown_type"},
+            Exception("Break loop")
+        ])
+        ws.send_json = AsyncMock()
+
+        ws_manager.active_connections = {}
+
+        await websocket_handler(ws, "test_user")
+
+        # 验证错误消息被发送
+        calls = ws.send_json.call_args_list
+        error_sent = any(
+            call[0][0].get("type") == "error" and "Unknown message type" in call[0][0].get("message", "")
+            for call in calls
+        )
+        assert error_sent
+
+    @pytest.mark.asyncio
+    async def test_websocket_handler_unsubscribe(self):
+        """测试WebSocket取消订阅."""
+        ws = AsyncMock()
+        ws.receive_json = AsyncMock(side_effect=[
+            {"type": "subscribe", "symbol_id": "symbol-1"},
+            {"type": "unsubscribe", "symbol_id": "symbol-1"},
+            Exception("Break loop")
+        ])
+        ws.send_json = AsyncMock()
+
+        ws_manager.active_connections = {}
+
+        await websocket_handler(ws, "test_user")
+
+        # 取消订阅后连接应被清理
+        # 注意：unsubscribe只清理特定symbol，不是全部
+        assert "test_user" not in ws_manager.active_connections or \
+               "symbol-1" not in ws_manager.active_connections.get("test_user", {})
+
+
+class TestStopHeartbeatTask:
+    """测试停止心跳任务."""
+
+    @pytest.mark.asyncio
+    async def test_stop_heartbeat_task(self):
+        """测试停止心跳任务."""
+        from app.services.websocket_service import stop_heartbeat_task, start_heartbeat_task
+
+        ws_manager.is_running = False
+
+        # 启动心跳任务
+        task = asyncio.create_task(start_heartbeat_task())
+
+        # 等待短暂时间
+        await asyncio.sleep(0.1)
+
+        # 停止心跳任务
+        await stop_heartbeat_task()
+
+        # 验证任务已停止
+        assert ws_manager.is_running is False
+
+        # 取消任务
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

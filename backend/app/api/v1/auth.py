@@ -3,23 +3,57 @@
 
 Author: FDAS Team
 Created: 2026-04-03
+Updated: 2026-04-16 - 实现logout Session清除、IP绑定、登录速率限制
+Updated: 2026-04-16 - 支持测试环境禁用速率限制
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+from uuid import UUID
+from functools import wraps
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.database import get_db
 from app.schemas.auth import LoginRequest, UserResponse
 from app.schemas.common import Response
 from app.services.auth_service import authenticate_user
-from app.services.session_service import SessionService
+from app.services.session_service import session_service
 
 router = APIRouter()
 
+# 检测是否在测试环境中
+TESTING = os.environ.get("TESTING", "").lower() in ("true", "1", "yes")
+
+# 速率限制器：登录接口限制每分钟5次尝试（测试环境禁用）
+limiter = Limiter(key_func=get_remote_address, enabled=not TESTING)
+
+
+def rate_limit(limit_string: str):
+    """
+    条件速率限制装饰器.
+
+    测试环境返回空装饰器，生产环境使用slowapi限制.
+    """
+    if TESTING:
+        # 测试环境：返回空装饰器
+        def decorator(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                return await func(*args, **kwargs)
+            return wrapper
+        return decorator
+    else:
+        # 生产环境：使用slowapi
+        return limiter.limit(limit_string)
+
 
 @router.post("/login", response_model=Response)
+@rate_limit("5/minute")
 async def login(
     request: LoginRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -27,6 +61,7 @@ async def login(
 
     Args:
         request: 登录请求
+        http_request: HTTP请求对象（用于获取IP）
         db: 数据库会话
 
     Returns:
@@ -40,12 +75,21 @@ async def login(
             detail="用户名或密码错误",
         )
 
-    # 创建Session
-    session_service = SessionService()
+    # 获取客户端IP地址
+    # 优先使用X-Forwarded-For（代理场景），否则使用直接连接IP
+    client_ip = http_request.headers.get("X-Forwarded-For")
+    if client_ip:
+        # X-Forwarded-For可能包含多个IP，取第一个
+        client_ip = client_ip.split(",")[0].strip()
+    else:
+        client_ip = http_request.client.host if http_request.client else None
+
+    # 创建Session（带IP绑定）
     session = await session_service.create_session(
         db=db,
         user_id=user.id,
         expires_hours=24,
+        ip_address=client_ip,
     )
 
     return Response(
@@ -64,16 +108,32 @@ async def login(
 
 @router.post("/logout", response_model=Response)
 async def logout(
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     用户登出.
 
-    TODO: 实现Session清除
+    从请求头获取session_id并清除对应Session记录.
+
+    Args:
+        request: 请求对象
+        db: 数据库会话
 
     Returns:
         Response: 登出结果
     """
+    # 从请求头获取session_id
+    session_id = request.headers.get("X-Session-ID")
+
+    if session_id:
+        try:
+            # 删除Session记录
+            await session_service.delete_session(db, UUID(session_id))
+        except ValueError:
+            # session_id格式无效，忽略
+            pass
+
     return Response(
         success=True,
         message="登出成功",

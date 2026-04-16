@@ -9,7 +9,7 @@ Created: 2026-04-10
 
 from typing import Optional
 from datetime import date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from uuid import UUID
 
 
@@ -42,6 +42,8 @@ class ForexSymbolUpdate(BaseModel):
 
 class ForexSymbolResponse(BaseModel):
     """外汇标的响应."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     code: str
     name: str
@@ -54,18 +56,14 @@ class ForexSymbolResponse(BaseModel):
     created_at: date
     updated_at: date
 
-    class Config:
-        from_attributes = True
-
 
 class ForexSymbolListItem(BaseModel):
     """外汇标的列表项（简化版）."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     code: str
     name: str
     base_currency: Optional[str]
     quote_currency: Optional[str]
     is_active: bool
-
-    class Config:
-        from_attributes = True

@@ -9,7 +9,7 @@ Created: 2026-04-10
 
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from uuid import UUID
 
 
@@ -37,6 +37,8 @@ class MarketUpdate(BaseModel):
 
 class MarketResponse(BaseModel):
     """市场类型响应."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     code: str
     name: str
@@ -45,6 +47,3 @@ class MarketResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True

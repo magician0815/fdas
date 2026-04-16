@@ -5,14 +5,17 @@ WebSocket实时数据推送服务.
 
 Author: FDAS Team
 Created: 2026-04-14
+Updated: 2026-04-16 - 使用具体WebSocket类型
 """
 
 import asyncio
 import json
 import logging
-from datetime import datetime
-from typing import Dict, Set, Any, Optional
+from datetime import datetime, timezone
+from typing import Dict, Set, Optional, Any
 from uuid import UUID
+
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +25,7 @@ class WebSocketManager:
 
     def __init__(self):
         # 活跃连接字典 {user_id: {symbol_id: [websocket_connections]}}
-        self.active_connections: Dict[str, Dict[str, Set[Any]]] = {}
+        self.active_connections: Dict[str, Dict[str, Set[WebSocket]]] = {}
         # 心跳间隔（秒）
         self.heartbeat_interval = 30
         # 数据推送间隔（秒）
@@ -30,7 +33,7 @@ class WebSocketManager:
         # 是否运行中
         self.is_running = False
 
-    async def connect(self, websocket: Any, user_id: str, symbol_id: str):
+    async def connect(self, websocket: WebSocket, user_id: str, symbol_id: str):
         """
         注册WebSocket连接.
 
@@ -52,10 +55,10 @@ class WebSocketManager:
         await self.send_message(websocket, {
             "type": "connected",
             "symbol_id": symbol_id,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
-    async def disconnect(self, websocket: Any, user_id: str, symbol_id: str):
+    async def disconnect(self, websocket: WebSocket, user_id: str, symbol_id: str):
         """
         移除WebSocket连接.
 
@@ -78,7 +81,7 @@ class WebSocketManager:
 
         logger.info(f"WebSocket连接断开: user={user_id}, symbol={symbol_id}")
 
-    async def disconnect_all(self, websocket: Any):
+    async def disconnect_all(self, websocket: WebSocket):
         """
         断开指定WebSocket的所有订阅.
 
@@ -89,7 +92,7 @@ class WebSocketManager:
             for symbol_id in list(self.active_connections[user_id].keys()):
                 self.active_connections[user_id][symbol_id].discard(websocket)
 
-    async def send_message(self, websocket: Any, message: Dict[str, Any]):
+    async def send_message(self, websocket: WebSocket, message: Dict[str, Any]):
         """
         发送消息到单个连接.
 
@@ -156,7 +159,7 @@ class WebSocketManager:
         """
         heartbeat_msg = {
             "type": "heartbeat",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         for user_id in list(self.active_connections.keys()):
@@ -174,7 +177,7 @@ class WebSocketManager:
             "type": "realtime_data",
             "symbol_id": symbol_id,
             "data": data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         await self.broadcast_to_symbol(symbol_id, message)
@@ -191,7 +194,7 @@ class WebSocketManager:
             "type": "kline_update",
             "symbol_id": symbol_id,
             "data": kline_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         await self.broadcast_to_symbol(symbol_id, message)
@@ -208,7 +211,7 @@ class WebSocketManager:
             "type": "indicator_update",
             "symbol_id": symbol_id,
             "data": indicator_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         await self.broadcast_to_symbol(symbol_id, message)
@@ -242,7 +245,7 @@ class WebSocketManager:
 ws_manager = WebSocketManager()
 
 
-async def websocket_handler(websocket: Any, user_id: str):
+async def websocket_handler(websocket: WebSocket, user_id: str):
     """
     WebSocket消息处理函数.
 
@@ -279,7 +282,7 @@ async def websocket_handler(websocket: Any, user_id: str):
                         await ws_manager.send_message(websocket, {
                             "type": "subscribe_success",
                             "symbol_id": symbol_id,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(timezone.utc).isoformat()
                         })
 
                 elif message_type == "unsubscribe":
@@ -291,7 +294,7 @@ async def websocket_handler(websocket: Any, user_id: str):
 
                         await ws_manager.send_message(websocket, {
                             "type": "unsubscribe_success",
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(timezone.utc).isoformat()
                         })
 
                 elif message_type == "heartbeat_response":
@@ -302,7 +305,7 @@ async def websocket_handler(websocket: Any, user_id: str):
                     # Ping消息，返回Pong
                     await ws_manager.send_message(websocket, {
                         "type": "pong",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(timezone.utc).isoformat()
                     })
 
                 else:

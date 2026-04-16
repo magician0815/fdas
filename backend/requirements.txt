@@ -18,6 +18,9 @@ pydantic-settings>=2.1.0
 itsdangerous>=2.1.0
 starlette-session>=0.3.0
 
+# 速率限制
+slowapi>=0.1.9
+
 # 数据采集
 akshare>=1.12.0
 apscheduler>=3.10.0

@@ -9,7 +9,7 @@ Created: 2026-04-11
 
 from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -40,5 +40,5 @@ class UserChartSetting(Base):
     setting_type = Column(String(50), nullable=False, comment="配置类型（drawing_tools/theme/indicators/view）")
     setting_key = Column(String(100), nullable=False, comment="配置键名")
     setting_value = Column(JSONB, nullable=False, comment="配置值（JSON格式）")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")

@@ -13,7 +13,7 @@ Created: 2026-04-14
 
 from sqlalchemy import Column, String, Boolean, DateTime, Date, Text, Numeric, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from app.core.database import Base
@@ -66,5 +66,5 @@ class FuturesContract(Base):
     open_interest = Column(Numeric(20, 0), default=0, comment="当前持仓量")
     datasource_id = Column(UUID(as_uuid=True), ForeignKey("datasources.id"), index=True, comment="数据来源ID")
     is_active = Column(Boolean, default=True, index=True, comment="是否启用（已到期设为False）")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, comment="创建时间")
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")
