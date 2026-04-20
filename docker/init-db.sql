@@ -81,6 +81,9 @@ CREATE TABLE IF NOT EXISTS datasources (
     min_date DATE,
     type VARCHAR(50) NOT NULL DEFAULT 'akshare',
     is_active BOOLEAN DEFAULT true,
+    config_file TEXT,
+    config_version VARCHAR(20),
+    config_updated_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -96,6 +99,9 @@ COMMENT ON COLUMN datasources.supported_symbols IS '支持的货币对列表';
 COMMENT ON COLUMN datasources.min_date IS '接口最早可用数据日期';
 COMMENT ON COLUMN datasources.type IS '数据源类型';
 COMMENT ON COLUMN datasources.is_active IS '是否启用';
+COMMENT ON COLUMN datasources.config_file IS '数据源配置文件(JSON格式)';
+COMMENT ON COLUMN datasources.config_version IS '配置版本号';
+COMMENT ON COLUMN datasources.config_updated_at IS '配置更新时间';
 COMMENT ON COLUMN datasources.created_at IS '创建时间';
 COMMENT ON COLUMN datasources.updated_at IS '更新时间';
 
@@ -160,16 +166,15 @@ COMMENT ON COLUMN collection_task_logs.duration_ms IS '执行耗时（毫秒）'
 COMMENT ON COLUMN collection_task_logs.created_at IS '创建时间';
 
 -- APScheduler任务表
--- 注意: next_run_time使用NUMERIC类型存储Unix timestamp，兼容APScheduler
 CREATE TABLE IF NOT EXISTS apscheduler_jobs (
     id VARCHAR(255) PRIMARY KEY,
-    next_run_time NUMERIC(24, 6),
+    next_run_time TIMESTAMP WITH TIME ZONE,
     job_state BYTEA NOT NULL
 );
 
 COMMENT ON TABLE apscheduler_jobs IS '定时任务调度器任务表';
 COMMENT ON COLUMN apscheduler_jobs.id IS '任务标识ID';
-COMMENT ON COLUMN apscheduler_jobs.next_run_time IS '下次执行时间（Unix timestamp）';
+COMMENT ON COLUMN apscheduler_jobs.next_run_time IS '下次执行时间';
 COMMENT ON COLUMN apscheduler_jobs.job_state IS '任务状态数据';
 
 -- ============================================
@@ -206,7 +211,7 @@ COMMENT ON COLUMN forex_symbols.updated_at IS '更新时间';
 
 -- 外汇日线行情表（分区表）
 CREATE TABLE IF NOT EXISTS forex_daily (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID DEFAULT uuid_generate_v4(),
     symbol_id UUID NOT NULL REFERENCES forex_symbols(id),
     datasource_id UUID REFERENCES datasources(id),
     date DATE NOT NULL,
@@ -219,6 +224,7 @@ CREATE TABLE IF NOT EXISTS forex_daily (
     change_amount NUMERIC(10, 4),
     amplitude NUMERIC(10, 4),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, date),
     UNIQUE(symbol_id, date, datasource_id)
 ) PARTITION BY RANGE (date);
 
@@ -338,8 +344,8 @@ INSERT INTO markets (code, name, description, timezone) VALUES
 ('crypto', '数字货币', '数字货币市场', 'UTC')
 ON CONFLICT (code) DO NOTHING;
 
--- 插入外汇数据源配置
-INSERT INTO datasources (name, market_id, interface, description, config_schema, supported_symbols, min_date, type, is_active)
+-- 插入外汇数据源配置（包含默认配置文件）
+INSERT INTO datasources (name, market_id, interface, description, config_schema, supported_symbols, min_date, type, is_active, config_file, config_version, config_updated_at)
 SELECT
     'AKShare外汇历史数据',
     m.id,
@@ -355,21 +361,75 @@ SELECT
     '["美元人民币", "欧元人民币", "日元人民币", "英镑人民币", "港币人民币", "澳元人民币", "加元人民币", "瑞郎人民币", "新西兰元人民币", "欧元美元", "英镑美元", "美元日元", "澳元美元", "美元加元", "美元瑞郎", "新西兰元美元", "欧元英镑", "欧元日元", "英镑日元", "澳元日元"]',
     '1994-01-01',
     'akshare',
-    true
+    true,
+    '{
+  "version": "1.0",
+  "name": "东方财富外汇数据源",
+  "type": "akshare",
+  "market": "forex",
+  "api": {
+    "base_url": "https://push2his.eastmoney.com/api/qt/stock/kline/get",
+    "method": "GET",
+    "timeout": 30,
+    "retry": {"max_attempt": 3, "backoff_factor": 2}
+  },
+  "headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://quote.eastmoney.com/",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
+  },
+  "symbol_mapping": {
+    "USDCNY": "133.USDCNH",
+    "EURCNY": "133.EURCNH",
+    "GBPCNY": "133.GBPCNH",
+    "JPYCNY": "133.CNHJPY",
+    "HKDCNY": "133.CNHHKD",
+    "AUDCNY": "133.AUDCNH",
+    "CADCNY": "133.CADCNH",
+    "CHFCNY": "133.CHFCNH",
+    "NZDCNY": "133.NZDCNH",
+    "EURUSD": "133.EURUSD",
+    "GBPUSD": "133.GBPUSD",
+    "USDJPY": "133.USDJPY",
+    "AUDUSD": "133.AUDUSD",
+    "USDCAD": "133.USDCAD",
+    "USDCHF": "133.USDCHF",
+    "NZDUSD": "133.NZDUSD",
+    "EURGBP": "133.EURGBP",
+    "EURJPY": "133.EURJPY",
+    "GBPJPY": "133.GBPJPY",
+    "AUDJPY": "133.AUDJPY",
+    "USDSGD": "133.USDSGD",
+    "USDHKD": "133.USDHKD"
+  },
+  "data_parser": {
+    "response_root": "data.klines",
+    "date_field": 0,
+    "open_field": 1,
+    "high_field": 2,
+    "low_field": 3,
+    "close_field": 4,
+    "volume_field": 5
+  }
+}',
+    '1.0',
+    CURRENT_TIMESTAMP
 FROM markets m WHERE m.code = 'forex'
 ON CONFLICT (name) DO NOTHING;
 
--- 插入外汇货币对标的基础数据
+-- 插入外汇货币对标的基础数据（使用AKShare标准代码）
+-- AKShare代码说明：CNH=离岸人民币，CNYC=人民币中间价
 INSERT INTO forex_symbols (code, name, base_currency, quote_currency, is_active) VALUES
-('USDCNY', '美元人民币', 'USD', 'CNY', true),
-('EURCNY', '欧元人民币', 'EUR', 'CNY', true),
-('JPYCNY', '日元人民币', 'JPY', 'CNY', true),
-('GBPCNY', '英镑人民币', 'GBP', 'CNY', true),
-('HKDCNY', '港币人民币', 'HKD', 'CNY', true),
-('AUDCNY', '澳元人民币', 'AUD', 'CNY', true),
-('CADCNY', '加元人民币', 'CAD', 'CNY', true),
-('CHFCNY', '瑞郎人民币', 'CHF', 'CNY', true),
-('NZDCNY', '新西兰元人民币', 'NZD', 'CNY', true),
+('USDCNH', '美元离岸人民币', 'USD', 'CNH', true),
+('EURCNH', '欧元离岸人民币', 'EUR', 'CNH', true),
+('CNHJPY', '离岸人民币日元', 'CNH', 'JPY', true),
+('GBPCNH', '英镑离岸人民币', 'GBP', 'CNH', true),
+('CNHHKD', '离岸人民币港币', 'CNH', 'HKD', true),
+('AUDCNH', '澳元离岸人民币', 'AUD', 'CNH', true),
+('CADCNH', '加元离岸人民币', 'CAD', 'CNH', true),
+('CHFCNH', '瑞郎离岸人民币', 'CHF', 'CNH', true),
+('NZDCNH', '新西兰元离岸人民币', 'NZD', 'CNH', true),
 ('EURUSD', '欧元美元', 'EUR', 'USD', true),
 ('GBPUSD', '英镑美元', 'GBP', 'USD', true),
 ('USDJPY', '美元日元', 'USD', 'JPY', true),
@@ -467,7 +527,7 @@ COMMENT ON COLUMN futures_contracts.updated_at IS '更新时间';
 
 -- 期货日线行情表（分区表）
 CREATE TABLE IF NOT EXISTS futures_daily (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID DEFAULT uuid_generate_v4(),
     contract_id UUID NOT NULL REFERENCES futures_contracts(id),
     variety_id UUID NOT NULL REFERENCES futures_varieties(id),
     datasource_id UUID REFERENCES datasources(id),
@@ -487,6 +547,7 @@ CREATE TABLE IF NOT EXISTS futures_daily (
     is_main_data BOOLEAN DEFAULT false,
     adjusted_price NUMERIC(10, 4),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, date),
     UNIQUE(contract_id, date, datasource_id)
 ) PARTITION BY RANGE (date);
 

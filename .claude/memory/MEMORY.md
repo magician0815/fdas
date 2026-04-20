@@ -7,97 +7,44 @@
 - 目标: 外汇汇率数据采集与可视化
 - 技术栈: FastAPI + Vue3 + PostgreSQL + AKShare(forex_hist) + ECharts
 - 目录: `/Users/chao/.local/bin/Projects/fdas`
+- 当前版本: **2.1.0**
 
 ## 当前状态
 - 阶段: 第一阶段（核心功能实现）
-- 真实进度: 约70%
-- 状态: 设计文档更新完成，待执行数据库迁移
-- 详情: [progress.md](progress.md)
+- 状态: 可配置数据源系统已完成
 
-## 第一阶段核心验收项（必须完成）
+## 2026-04-21 更新: 版本 2.1.0
 
-| 功能 | 状态 | 说明 |
-|------|------|------|
-| 数据实际采集 | ❌ 待实现 | 使用AKShare forex_hist接口 |
-| 数据入库 | ❌ 待实现 | OHLC + 涨跌幅/涨跌额/振幅 |
-| 定时调度 | ❌ 待实现 | APScheduler配置启动 |
-| K线/MA/MACD图表 | ❌ 待实现 | ECharts完整实现 |
-| 数据源配置功能 | ❌ 待实现 | 配置Schema + 自动获取货币对 |
-| 采集任务配置功能 | ❌ 待实现 | 动态表单 + 参数校验 |
+### 新功能: 可配置数据源系统
+- 每个数据源拥有独立配置文件（JSON格式）
+- 前端支持配置查看、编辑、导入、导出
+- 采集器支持从数据库加载配置参数
 
-## 2026-04-10 更新内容
+### 数据库更新
+- datasources表新增: config_file, config_version, config_updated_at
 
-### 数据库模型更新
-- fx_data: 新增symbol_code、change_pct、change_amount、amplitude字段
-- datasources: 新增interface、config_schema、supported_symbols、min_date字段
-- collection_tasks: 新增symbol、start_date、end_date、last_status等字段
-- 新建: collection_task_logs表
+### API端点
+- GET /{id}/config - 获取配置
+- PUT /{id}/config - 更新配置
+- GET /{id}/export - 导出配置
+- POST /import - 导入配置
 
-### AKShare接口规范
-- 接口: `forex_hist` - 外汇日线行情
-- 参数: symbol(中文货币对名称)、start_date、end_date
-- 返回: OHLC + 涨跌幅 + 涨跌额 + 振幅
+### 核心验收项状态
 
-### 货币对映射
-| 中文 | 英文代码 |
-|------|----------|
-| 美元人民币 | USDCNY |
-| 欧元美元 | EURUSD |
-| 英镑美元 | GBPUSD |
-| 美元日元 | USDJPY |
-| 澳元美元 | AUDUSD |
-| ... | ... |
-
-## 已完成模块
-
-### 后端
-- ✅ 数据库模型 + Alembic迁移（已更新）
-- ✅ 配置管理 + 日志管理
-- ✅ 全局异常处理
-- ✅ 用户认证（登录/登出/Session）
-- ✅ 用户CRUD API
-- ✅ 权限依赖注入
-- ⚠️ AKShare采集器（设计完成，待实现）
-- ⚠️ 数据入库服务（设计完成，待实现）
-- ❌ 数据源管理API
-- ❌ 采集任务管理API
-- ❌ APScheduler调度
-
-### 前端
-- ✅ Layout + Sidebar + Navbar组件
-- ✅ 登录页面功能
-- ⚠️ 数据可视化页面（骨架）
-- ⚠️ 数据源管理页面（骨架）
-- ⚠️ 采集任务管理页面（骨架）
-- ⚠️ 用户管理页面（骨架）
-- ⚠️ 系统日志页面（骨架）
-
-## 下一步任务
-
-**当前**: 执行数据库迁移
-**目标**: 
-1. 创建迁移脚本更新表结构
-2. 初始化数据源记录
-3. 验证表结构正确
+| 功能 | 状态 |
+|------|------|
+| 数据实际采集 | ✅ 完成 |
+| 数据入库 | ✅ 完成 |
+| 定时调度 | ✅ 完成 |
+| K线/MA/MACD图表 | ✅ 完成 |
+| 数据源配置功能 | ✅ 完成 |
+| 采集任务配置功能 | ✅ 完成 |
 
 ## 技术决策
 | 决策 | 选择 |
 |------|------|
 | 认证 | Session+Cookie(PostgreSQL) |
 | 数据采集 | AKShare forex_hist接口 |
-| 货币对格式 | 中文名称 + 英文代码同时存储 |
+| 货币对格式 | 中文名称 + 英文代码 |
 | 调度 | APScheduler |
 | 前端图表 | ECharts |
-| 技术指标 | MA/MACD（后续考虑TA-Lib） |
-| 权限控制 | 前后端双重 |
-
-## 关键文件路径
-```
-docs/PRD.md                  # 需求设计
-docs/PHASE1_DESIGN.md        # 第一阶段设计（已更新）
-.claude/memory/progress.md   # 开发进度（已更新）
-backend/app/models/          # 数据模型（已更新）
-backend/app/collectors/      # 采集器（待实现）
-backend/app/api/v1/          # API路由
-frontend/src/views/          # 前端页面
-```

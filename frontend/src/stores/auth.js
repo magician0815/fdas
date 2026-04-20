@@ -41,10 +41,12 @@ export const useAuthStore = defineStore('auth', () => {
         username,
         password
       })
-      user.value = response.data.data.user
+      // 注意：axios拦截器已返回response.data，所以response直接是API响应体
+      // API响应格式：{success, data: {user, session_id}, message, error}
+      user.value = response.data.user
       // 存储session_id到sessionStorage（浏览器关闭后自动清除）
-      if (response.data.data.session_id) {
-        sessionStorage.setItem('session_id', response.data.data.session_id)
+      if (response.data.session_id) {
+        sessionStorage.setItem('session_id', response.data.session_id)
       }
       return { success: true }
     } catch (error) {
@@ -84,7 +86,8 @@ export const useAuthStore = defineStore('auth', () => {
   async function fetchUser() {
     try {
       const response = await axios.get('/api/v1/auth/me')
-      user.value = response.data.data.user
+      // axios拦截器已返回response.data
+      user.value = response.data.user
     } catch (error) {
       user.value = null
       sessionStorage.removeItem('session_id')

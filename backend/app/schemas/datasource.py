@@ -5,11 +5,11 @@
 
 Author: FDAS Team
 Created: 2026-04-10
-Updated: 2026-04-10 - 适配market_id新字段
+Updated: 2026-04-17 - 修复created_at/updated_at类型为datetime
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import date
+from datetime import date, datetime
 from pydantic import BaseModel, Field, ConfigDict
 from uuid import UUID
 
@@ -57,8 +57,11 @@ class DataSourceResponse(BaseModel):
     min_date: Optional[date]
     type: str
     is_active: bool
-    created_at: date
-    updated_at: date
+    config_file: Optional[str] = None
+    config_version: Optional[str] = None
+    config_updated_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class SymbolInfo(BaseModel):

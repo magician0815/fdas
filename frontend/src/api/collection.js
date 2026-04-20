@@ -5,6 +5,7 @@
  *
  * Author: FDAS Team
  * Created: 2026-04-11
+ * Updated: 2026-04-17 - 修复API路径添加尾部斜杠
  */
 
 import request from './index'
@@ -17,7 +18,7 @@ import request from './index'
  */
 export function getCollectionTasks(marketId = null) {
   const params = marketId ? { market_id: marketId } : {}
-  return request.get('/api/v1/collection-tasks', { params })
+  return request.get('/api/v1/collection-tasks/', { params })
 }
 
 /**
@@ -27,7 +28,7 @@ export function getCollectionTasks(marketId = null) {
  * @returns {Promise} API响应
  */
 export function createCollectionTask(data) {
-  return request.post('/api/v1/collection-tasks', data)
+  return request.post('/api/v1/collection-tasks/', data)
 }
 
 /**

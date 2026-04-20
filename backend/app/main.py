@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="FDAS - 金融数据抓取与分析系统",
     description="基于FastAPI构建的金融数据采集与可视化API服务",
-    version="2.0.1",
+    version="2.1.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     lifespan=lifespan,

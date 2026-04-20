@@ -7,7 +7,7 @@ Author: FDAS Team
 Created: 2026-04-10
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -18,7 +18,7 @@ import logging
 from app.models.forex_daily import ForexDaily
 from app.models.forex_symbol import ForexSymbol
 from app.models.datasource import DataSource
-from app.collectors.akshare_collector import akshare_collector
+from app.collectors.akshare_collector import AKShareCollector
 from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ class ForexDailyService:
         datasource_id: Optional[UUID] = None,
         start_date: date = None,
         end_date: date = None,
+        collector_config: Optional[Dict[str, Any]] = None,
     ) -> int:
         """
         采集并保存外汇日线数据.
@@ -48,6 +49,7 @@ class ForexDailyService:
             datasource_id: 数据来源ID
             start_date: 开始日期（默认30天前）
             end_date: 结束日期（默认今天）
+            collector_config: 采集器配置（可选，为None时使用默认配置）
 
         Returns:
             int: 保存的数据条数
@@ -70,8 +72,14 @@ class ForexDailyService:
 
         logger.info(f"开始采集并保存数据: {symbol.name} ({symbol.code}), {start_date} ~ {end_date}")
 
+        # 根据配置创建采集器（无配置使用默认全局实例）
+        if collector_config:
+            collector = AKShareCollector(config=collector_config)
+        else:
+            collector = AKShareCollector()
+
         # 采集数据
-        records = await akshare_collector.collect_forex_hist(
+        records = await collector.collect_forex_hist(
             symbol_name=symbol.name,
             symbol_code=symbol.code,
             start_date=start_date,
@@ -82,14 +90,19 @@ class ForexDailyService:
             logger.warning(f"采集数据为空，跳过保存")
             return 0
 
-        # 为每条记录添加symbol_id和datasource_id
+        # 为每条记录添加symbol_id和datasource_id，并清理不需要的字段
+        # ForexDaily表需要的字段：symbol_id, datasource_id, date, open, high, low, close, volume, change_pct, change_amount, amplitude
+        allowed_fields = {"symbol_id", "datasource_id", "date", "open", "high", "low", "close", "volume", "change_pct", "change_amount", "amplitude", "updated_at"}
+        cleaned_records = []
         for record in records:
-            record["symbol_id"] = symbol_id
+            cleaned_record = {k: v for k, v in record.items() if k in allowed_fields}
+            cleaned_record["symbol_id"] = symbol_id
             if datasource_id:
-                record["datasource_id"] = datasource_id
+                cleaned_record["datasource_id"] = datasource_id
+            cleaned_records.append(cleaned_record)
 
         # 批量保存
-        saved_count = await self.save_forex_daily(db, records)
+        saved_count = await self.save_forex_daily(db, cleaned_records)
         return saved_count
 
     async def get_forex_daily(
@@ -213,7 +226,7 @@ class ForexDailyService:
         for record in data:
             stmt = insert(ForexDaily).values(**record)
             stmt = stmt.on_conflict_do_update(
-                constraint="uq_forex_daily_symbol_date_datasource",
+                constraint="forex_daily_symbol_id_date_datasource_id_key",
                 set_={
                     "open": stmt.excluded.open,
                     "high": stmt.excluded.high,

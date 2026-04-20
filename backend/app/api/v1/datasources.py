@@ -8,6 +8,7 @@ Created: 2026-04-10
 """
 
 from typing import List
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -389,4 +390,194 @@ async def sync_symbols_to_database(
             "total": len(fetched_symbols),
         },
         message=f"同步完成：新增 {added_count} 个，更新 {updated_count} 个",
+    )
+
+
+# ==================== 配置管理API ====================
+
+class ConfigUpdateRequest(BaseModel):
+    """配置更新请求"""
+    config_file: str = Field(..., min_length=1, description="配置文件JSON字符串")
+
+
+@router.get("/{datasource_id}/config", response_model=Response)
+async def get_datasource_config(
+    datasource_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    获取数据源配置文件.
+
+    仅admin可访问.
+    """
+    result = await db.execute(
+        select(DataSource).where(DataSource.id == datasource_id)
+    )
+    datasource = result.scalar_one_or_none()
+
+    if not datasource:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="数据源不存在"
+        )
+
+    return Response(
+        success=True,
+        data={
+            "datasource_id": str(datasource_id),
+            "datasource_name": datasource.name,
+            "config_file": datasource.config_file or "",
+            "config_version": datasource.config_version,
+            "config_updated_at": datasource.config_updated_at.isoformat() if datasource.config_updated_at else None,
+        },
+    )
+
+
+@router.put("/{datasource_id}/config", response_model=Response)
+async def update_datasource_config(
+    datasource_id: UUID,
+    request: ConfigUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    更新数据源配置文件.
+
+    仅admin可访问.
+    """
+    from app.services.datasource_config_service import get_datasource_config_service
+    from app.schemas.datasource_config_schema import get_default_forex_config
+
+    config_json = request.config_file
+
+    # 如果没有提供配置，使用默认配置
+    if not config_json.strip():
+        config_json = get_default_forex_config()
+
+    result = await db.execute(
+        select(DataSource).where(DataSource.id == datasource_id)
+    )
+    datasource = result.scalar_one_or_none()
+
+    if not datasource:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="数据源不存在"
+        )
+
+    # 保存配置
+    config_service = get_datasource_config_service(db)
+    success, error_msg = await config_service.save_config(datasource_id, config_json)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
+
+    logger.info(f"更新数据源配置: {datasource.name}")
+
+    return Response(
+        success=True,
+        message="配置更新成功",
+    )
+
+
+@router.get("/{datasource_id}/export", response_model=Response)
+async def export_datasource_config(
+    datasource_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    导出数据源配置文件.
+
+    仅admin可访问.
+    """
+    from app.services.datasource_config_service import get_datasource_config_service
+
+    result = await db.execute(
+        select(DataSource).where(DataSource.id == datasource_id)
+    )
+    datasource = result.scalar_one_or_none()
+
+    if not datasource:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="数据源不存在"
+        )
+
+    config_service = get_datasource_config_service(db)
+    config_json = await config_service.export_config(datasource_id)
+
+    return Response(
+        success=True,
+        data={
+            "datasource_id": str(datasource_id),
+            "datasource_name": datasource.name,
+            "config_file": config_json or "",
+        },
+    )
+
+
+class ImportConfigRequest(BaseModel):
+    """导入配置请求"""
+    config_file: str = Field(..., min_length=1, description="配置文件JSON字符串")
+    name: str = Field(..., min_length=1, max_length=100, description="数据源名称")
+    market_id: UUID = Field(..., description="市场ID")
+
+
+@router.post("/import", response_model=Response)
+async def import_datasource_config(
+    request: ImportConfigRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """
+    导入数据源配置文件创建新数据源.
+
+    仅admin可访问.
+    """
+    from app.services.datasource_config_service import get_datasource_config_service
+
+    config_file = request.config_file
+    name = request.name
+    market_id = request.market_id
+
+    if not config_file.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="配置文件不能为空"
+        )
+
+    if not name.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="数据源名称不能为空"
+        )
+
+    if not market_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="市场ID不能为空"
+        )
+
+    config_service = get_datasource_config_service(db)
+    success, error_msg, datasource_id = await config_service.import_config(
+        config_file, name, market_id
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
+
+    logger.info(f"导入数据源配置: {name}")
+
+    return Response(
+        success=True,
+        data={"datasource_id": str(datasource_id)},
+        message="数据源导入成功",
     )

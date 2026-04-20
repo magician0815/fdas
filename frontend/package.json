@@ -1,6 +1,6 @@
 {
   "name": "fdas-frontend",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "金融数据抓取与分析系统 - 前端",
   "type": "module",
   "scripts": {

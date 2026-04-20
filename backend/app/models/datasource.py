@@ -6,6 +6,7 @@
 Author: FDAS Team
 Created: 2026-04-03
 Updated: 2026-04-10 - 新增market_id字段，添加字段注释
+Updated: 2026-04-21 - 新增config_file字段存储配置文件
 """
 
 from sqlalchemy import Column, String, DateTime, Boolean, Date, Text, ForeignKey
@@ -29,6 +30,9 @@ class DataSource(Base):
         interface: AKShare接口名称（如forex_hist）
         description: 数据源描述
         config_schema: 配置参数Schema（JSON）
+        config_file: 配置文件内容（JSON格式字符串）
+        config_version: 配置版本号
+        config_updated_at: 配置更新时间
         supported_symbols: 支持的货币对列表（JSON）
         min_date: 接口最早可用数据日期
         type: 数据源类型（默认akshare）
@@ -44,6 +48,9 @@ class DataSource(Base):
     interface = Column(String(50), nullable=False, comment="AKShare接口名称")
     description = Column(Text, comment="数据源描述说明")
     config_schema = Column(JSONB, nullable=False, comment="配置参数Schema")
+    config_file = Column(Text, nullable=True, comment="数据源配置文件(JSON格式)")
+    config_version = Column(String(20), nullable=True, comment="配置版本号")
+    config_updated_at = Column(DateTime(timezone=True), nullable=True, comment="配置更新时间")
     supported_symbols = Column(JSONB, comment="支持的货币对列表")
     min_date = Column(Date, comment="接口最早可用数据日期")
     type = Column(String(50), nullable=False, default="akshare", comment="数据源类型")

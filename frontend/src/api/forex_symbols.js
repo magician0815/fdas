@@ -5,6 +5,7 @@
  *
  * Author: FDAS Team
  * Created: 2026-04-11
+ * Updated: 2026-04-17 - 修复API路径添加尾部斜杠
  */
 
 import request from './index'
@@ -16,5 +17,5 @@ import request from './index'
  * @returns {Promise} API响应
  */
 export function getForexSymbols(activeOnly = true) {
-  return request.get('/api/v1/forex-symbols', { params: { active_only: activeOnly } })
+  return request.get('/api/v1/forex-symbols/', { params: { active_only: activeOnly } })
 }

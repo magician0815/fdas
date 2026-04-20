@@ -14,6 +14,7 @@ from datetime import datetime, date, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import logging
+import json
 
 from app.core.database import AsyncSessionLocal
 from app.models.collection_task import CollectionTask
@@ -140,6 +141,20 @@ class CollectionService:
                 if latest_date and latest_date < end_date:
                     start_date = latest_date + timedelta(days=1)
 
+                # 获取数据源配置
+                collector_config = None
+                if task.datasource_id:
+                    result = await db.execute(
+                        select(DataSource).where(DataSource.id == task.datasource_id)
+                    )
+                    datasource = result.scalar_one_or_none()
+                    if datasource and datasource.config_file:
+                        try:
+                            collector_config = json.loads(datasource.config_file)
+                            logger.info(f"使用数据源配置: {datasource.name}")
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"数据源配置JSON解析失败，使用默认: {e}")
+
                 # 执行采集
                 records_count = await forex_daily_service.collect_and_save(
                     db=db,
@@ -147,6 +162,7 @@ class CollectionService:
                     datasource_id=task.datasource_id,
                     start_date=start_date,
                     end_date=end_date,
+                    collector_config=collector_config,
                 )
 
                 # 更新日志

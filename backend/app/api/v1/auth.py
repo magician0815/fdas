@@ -138,3 +138,65 @@ async def logout(
         success=True,
         message="登出成功",
     )
+
+
+@router.get("/me", response_model=Response)
+async def get_current_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取当前登录用户信息.
+
+    从请求头获取session_id，验证Session有效性并返回用户信息.
+
+    Args:
+        request: 请求对象
+        db: 数据库会话
+
+    Returns:
+        Response: 用户信息
+    """
+    # 从请求头获取session_id
+    session_id = request.headers.get("X-Session-ID")
+
+    if not session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未登录",
+        )
+
+    try:
+        # 验证Session并获取用户信息
+        session = await session_service.get_session_by_id(db, UUID(session_id))
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session已过期",
+            )
+
+        # 获取用户信息
+        from app.services.user_service import user_service
+        user = await user_service.get_user_by_id(db, session.user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="用户不存在",
+            )
+
+        return Response(
+            success=True,
+            data={
+                "user": UserResponse(
+                    id=str(user.id),
+                    username=user.username,
+                    role=user.role,
+                ),
+            },
+            message=None,
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session格式无效",
+        )

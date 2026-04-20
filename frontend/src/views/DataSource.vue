@@ -3,12 +3,16 @@
     <div class="page-header">
       <div class="header-left">
         <h1 class="page-title">数据源管理</h1>
-        <p class="page-subtitle">管理数据采集来源和货币对同步</p>
+        <p class="page-subtitle">管理数据采集来源和金融标的同步</p>
       </div>
       <div class="header-right">
         <el-button @click="fetchDatasources" :loading="loading">
           <el-icon><Refresh /></el-icon>
           <span>刷新</span>
+        </el-button>
+        <el-button type="success" @click="showImportDialog">
+          <el-icon><Upload /></el-icon>
+          <span>导入配置</span>
         </el-button>
       </div>
     </div>
@@ -46,12 +50,24 @@
             <span class="info-label">支持标的</span>
             <span class="info-value">{{ ds.supported_symbols?.length || 0 }} 个</span>
           </div>
+          <div class="info-row">
+            <span class="info-label">配置版本</span>
+            <span class="info-value">{{ ds.config_version || '默认' }}</span>
+          </div>
         </div>
 
         <div class="card-footer">
           <el-button size="small" type="primary" @click="syncSymbolsToDb(ds)" :loading="ds.syncing">
             <el-icon><Refresh /></el-icon>
-            同步货币对到数据库
+            同步金融标的
+          </el-button>
+          <el-button size="small" @click="showConfigDialog(ds)" :loading="ds.loadingConfig">
+            <el-icon><Setting /></el-icon>
+            配置
+          </el-button>
+          <el-button size="small" @click="exportConfig(ds)" :loading="ds.exporting">
+            <el-icon><Download /></el-icon>
+            导出
           </el-button>
         </div>
       </div>
@@ -59,7 +75,7 @@
       <!-- 空状态 -->
       <div class="empty-card" v-if="!datasources.length && !loading">
         <el-empty description="暂无数据源">
-          <el-button type="primary" @click="showCreateDialog">添加数据源</el-button>
+          <el-button type="primary" @click="showImportDialog">添加数据源</el-button>
         </el-empty>
       </div>
     </div>
@@ -67,7 +83,7 @@
     <!-- 同步结果对话框 -->
     <el-dialog
       v-model="syncResultDialogVisible"
-      title="货币对同步结果"
+      title="金融标的同步结果"
       width="500px"
     >
       <div class="sync-result">
@@ -84,11 +100,84 @@
           <span>跳过（已存在）: {{ syncResult.skipped }} 个</span>
         </div>
         <div class="result-item total">
-          <span>总计处理: {{ syncResult.total }} 个货币对</span>
+          <span>总计处理: {{ syncResult.total }} 个金融标的</span>
         </div>
       </div>
       <template #footer>
         <el-button type="primary" @click="syncResultDialogVisible = false">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 配置编辑对话框 -->
+    <el-dialog
+      v-model="configDialogVisible"
+      :title="`配置编辑 - ${currentDatasource?.name}`"
+      width="800px"
+      destroy-on-close
+    >
+      <div class="config-editor">
+        <el-alert
+          title="配置说明"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px"
+        >
+          <template #default>
+            修改配置后，采集任务将使用新配置执行。JSON格式必须正确。
+          </template>
+        </el-alert>
+        <el-input
+          v-model="configContent"
+          type="textarea"
+          :rows="20"
+          placeholder="请输入JSON配置..."
+          :style="{ fontFamily: 'monospace', fontSize: '12px' }"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="configDialogVisible = false">取消</el-button>
+        <el-button type="warning" @click="resetConfig">重置为默认</el-button>
+        <el-button type="primary" @click="saveConfig" :loading="savingConfig">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入配置对话框 -->
+    <el-dialog
+      v-model="importDialogVisible"
+      title="导入数据源配置"
+      width="600px"
+      destroy-on-close
+    >
+      <div class="import-form">
+        <el-form :model="importForm" label-width="100px">
+          <el-form-item label="数据源名称" required>
+            <el-input v-model="importForm.name" placeholder="请输入数据源名称" />
+          </el-form-item>
+          <el-form-item label="市场" required>
+            <el-select v-model="importForm.market_id" placeholder="请选择市场">
+              <el-option
+                v-for="m in markets"
+                :key="m.id"
+                :label="m.name"
+                :value="m.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="配置文件" required>
+            <el-input
+              v-model="importForm.config_file"
+              type="textarea"
+              :rows="15"
+              placeholder="请粘贴JSON配置..."
+              :style="{ fontFamily: 'monospace', fontSize: '12px' }"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleImport" :loading="importing">导入</el-button>
       </template>
     </el-dialog>
   </div>
@@ -98,16 +187,24 @@
 /**
  * 数据源管理页面.
  *
- * 提供数据源查看和货币对同步功能.
+ * 提供数据源查看、金融标的同步、配置管理功能.
  *
  * Author: FDAS Team
  * Created: 2026-04-03
- * Updated: 2026-04-11 - 完整功能实现，添加货币对同步
+ * Updated: 2026-04-21 - 添加配置编辑、导入导出功能
  */
 import { ref, reactive, onMounted } from 'vue'
-import { Connection, Refresh, CircleCheck, Edit } from '@element-plus/icons-vue'
+import { Connection, Refresh, CircleCheck, Edit, Setting, Download, Upload } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getDatasources, syncSymbolsToDatabase } from '@/api/datasources'
+import {
+  getDatasources,
+  syncSymbolsToDatabase,
+  getDatasourceConfig,
+  updateDatasourceConfig,
+  exportDatasourceConfig,
+  importDatasourceConfig,
+  getDefaultConfig
+} from '@/api/datasources'
 import { getMarkets } from '@/api/markets'
 import logger from '@/services/logger'
 
@@ -115,6 +212,21 @@ import logger from '@/services/logger'
 const loading = ref(false)
 const datasources = ref([])
 const markets = ref([])
+
+// 配置编辑相关
+const configDialogVisible = ref(false)
+const currentDatasource = ref(null)
+const configContent = ref('')
+const savingConfig = ref(false)
+
+// 导入相关
+const importDialogVisible = ref(false)
+const importing = ref(false)
+const importForm = reactive({
+  name: '',
+  market_id: '',
+  config_file: ''
+})
 
 // 同步结果对话框
 const syncResultDialogVisible = ref(false)
@@ -158,7 +270,7 @@ const fetchMarkets = async () => {
   }
 }
 
-// 同步货币对到数据库
+// 同步金融标的到数据库
 const syncSymbolsToDb = async (ds) => {
   try {
     ds.syncing = true
@@ -175,15 +287,156 @@ const syncSymbolsToDb = async (ds) => {
       ElMessage.error(res.message || '同步失败')
     }
   } catch (e) {
-    ElMessage.error('同步货币对失败')
+    ElMessage.error('同步金融标的失败')
   } finally {
     ds.syncing = false
   }
 }
 
+// 显示配置对话框
+const showConfigDialog = async (ds) => {
+  try {
+    ds.loadingConfig = true
+    currentDatasource.value = ds
+    const res = await getDatasourceConfig(ds.id)
+    if (res.success) {
+      configContent.value = res.data.config_file || ''
+      if (!configContent.value) {
+        // 获取默认配置
+        configContent.value = getDefaultConfig()
+      }
+    } else {
+      ElMessage.error(res.message || '获取配置失败')
+      return
+    }
+    configDialogVisible.value = true
+  } catch (e) {
+    ElMessage.error('获取配置失败')
+  } finally {
+    ds.loadingConfig = false
+  }
+}
+
+// 保存配置
+const saveConfig = async () => {
+  if (!currentDatasource.value) return
+
+  // 验证JSON格式
+  try {
+    JSON.parse(configContent.value)
+  } catch (e) {
+    ElMessage.error('JSON格式不正确')
+    return
+  }
+
+  try {
+    savingConfig.value = true
+    const res = await updateDatasourceConfig(
+      currentDatasource.value.id,
+      configContent.value
+    )
+    if (res.success) {
+      ElMessage.success('配置保存成功')
+      configDialogVisible.value = false
+      fetchDatasources()
+    } else {
+      ElMessage.error(res.message || '保存失败')
+    }
+  } catch (e) {
+    ElMessage.error('保存配置失败')
+  } finally {
+    savingConfig.value = false
+  }
+}
+
+// 重置为默认配置
+const resetConfig = () => {
+  configContent.value = getDefaultConfig()
+  ElMessage.info('已重置为默认配置')
+}
+
+// 导出配置
+const exportConfig = async (ds) => {
+  try {
+    ds.exporting = true
+    const res = await exportDatasourceConfig(ds.id)
+    if (res.success && res.data.config_file) {
+      // 创建下载
+      const blob = new Blob([res.data.config_file], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${ds.name}_config.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      ElMessage.success('配置导出成功')
+    } else {
+      ElMessage.warning('该数据源暂无配置')
+    }
+  } catch (e) {
+    ElMessage.error('导出配置失败')
+  } finally {
+    ds.exporting = false
+  }
+}
+
+// 显示导入对话框
+const showImportDialog = () => {
+  importForm.name = ''
+  importForm.market_id = ''
+  importForm.config_file = getDefaultConfig()
+  importDialogVisible.value = true
+}
+
+// 处理导入
+const handleImport = async () => {
+  if (!importForm.name) {
+    ElMessage.error('请输入数据源名称')
+    return
+  }
+  if (!importForm.market_id) {
+    ElMessage.error('请选择市场')
+    return
+  }
+  if (!importForm.config_file) {
+    ElMessage.error('请输入配置文件')
+    return
+  }
+
+  // 验证JSON格式
+  try {
+    JSON.parse(importForm.config_file)
+  } catch (e) {
+    ElMessage.error('JSON格式不正确')
+    return
+  }
+
+  try {
+    importing.value = true
+    const res = await importDatasourceConfig(
+      importForm.config_file,
+      importForm.name,
+      importForm.market_id
+    )
+    if (res.success) {
+      ElMessage.success('配置导入成功')
+      importDialogVisible.value = false
+      fetchDatasources()
+    } else {
+      ElMessage.error(res.message || '导入失败')
+    }
+  } catch (e) {
+    ElMessage.error('导入配置失败')
+  } finally {
+    importing.value = false
+  }
+}
+
 // 显示创建对话框
 const showCreateDialog = () => {
-  ElMessage.info('创建数据源功能开发中')
+  ElMessage.info('请使用"导入配置"功能创建数据源')
 }
 
 onMounted(() => {
@@ -353,6 +606,25 @@ onMounted(() => {
   background: var(--fdas-gray-100);
   color: var(--fdas-text-primary);
   font-weight: 500;
+}
+
+/* 配置编辑器 */
+.config-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.config-editor .el-textarea {
+  font-family: monospace;
+}
+
+/* 导入表单 */
+.import-form {
+  padding: var(--fdas-spacing-md) 0;
+}
+
+.import-form .el-textarea {
+  font-family: monospace;
 }
 
 /* 响应式设计 */
