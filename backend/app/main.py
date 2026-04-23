@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="FDAS - 金融数据抓取与分析系统",
     description="基于FastAPI构建的金融数据采集与可视化API服务",
-    version="2.1.0",
+    version="2.2.2",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     lifespan=lifespan,
@@ -94,21 +94,29 @@ async def health_check():
     Returns:
         dict: 服务健康状态信息
     """
-    return {"status": "healthy", "version": "2.0.1"}
+    return {"status": "healthy", "version": "2.2.2"}
 
 
 # 注册API路由
-from app.api.v1 import auth, users, fx_data, datasources, collection_tasks, markets, forex_symbols, chart_settings, stocks
+from app.api.v1 import auth, users, fx_data, datasources, datasource_wizard, collection_tasks, markets, forex_symbols, chart_settings, stocks
+from app.api.v1 import stock_symbols, stock_data, futures_varieties, futures_data, bond_symbols, bond_data
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户管理"])
 app.include_router(markets.router, prefix="/api/v1/markets", tags=["市场类型"])
 app.include_router(datasources.router, prefix="/api/v1/datasources", tags=["数据源管理"])
+app.include_router(datasource_wizard.router, prefix="/api/v1/datasources", tags=["数据源向导"])
 app.include_router(forex_symbols.router, prefix="/api/v1/forex-symbols", tags=["外汇标的"])
 app.include_router(collection_tasks.router, prefix="/api/v1/collection-tasks", tags=["采集任务管理"])
 app.include_router(fx_data.router, prefix="/api/v1/fx", tags=["外汇行情数据"])
 app.include_router(chart_settings.router, prefix="/api/v1/chart", tags=["图表设置"])
-app.include_router(stocks.router, prefix="/api/v1", tags=["股票数据"])
+app.include_router(stocks.router, prefix="/api/v1/stocks", tags=["股票数据"])
+app.include_router(stock_symbols.router, prefix="/api/v1/stock-symbols", tags=["股票标的"])
+app.include_router(stock_data.router, prefix="/api/v1", tags=["股票行情数据"])
+app.include_router(futures_varieties.router, prefix="/api/v1/futures-varieties", tags=["期货品种"])
+app.include_router(futures_data.router, prefix="/api/v1", tags=["期货行情数据"])
+app.include_router(bond_symbols.router, prefix="/api/v1/bond-symbols", tags=["债券标的"])
+app.include_router(bond_data.router, prefix="/api/v1", tags=["债券行情数据"])
 
 # 静态文件服务（前端）
 # 检查静态文件目录是否存在

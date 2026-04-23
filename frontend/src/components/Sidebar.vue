@@ -25,7 +25,41 @@
     >
       <el-menu-item index="/fx-data">
         <el-icon><TrendCharts /></el-icon>
-        <template #title>数据分析</template>
+        <template #title>外汇数据</template>
+      </el-menu-item>
+
+      <el-sub-menu index="market-data" v-if="!collapsed">
+        <template #title>
+          <el-icon><DataLine /></el-icon>
+          <span>多市场数据</span>
+        </template>
+        <el-menu-item index="/stock-data">
+          <el-icon><TrendCharts /></el-icon>
+          <template #title>股票数据</template>
+        </el-menu-item>
+        <el-menu-item index="/futures-data">
+          <el-icon><TrendCharts /></el-icon>
+          <template #title>期货数据</template>
+        </el-menu-item>
+        <el-menu-item index="/bond-data">
+          <el-icon><TrendCharts /></el-icon>
+          <template #title>债券数据</template>
+        </el-menu-item>
+      </el-sub-menu>
+
+      <el-menu-item index="/stock-data" v-if="collapsed">
+        <el-icon><TrendCharts /></el-icon>
+        <template #title>股票数据</template>
+      </el-menu-item>
+
+      <el-menu-item index="/futures-data" v-if="collapsed">
+        <el-icon><TrendCharts /></el-icon>
+        <template #title>期货数据</template>
+      </el-menu-item>
+
+      <el-menu-item index="/bond-data" v-if="collapsed">
+        <el-icon><TrendCharts /></el-icon>
+        <template #title>债券数据</template>
       </el-menu-item>
 
       <el-menu-item index="/datasource" v-if="isAdmin">
@@ -75,7 +109,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { TrendCharts, Connection, Timer, User, Document, Expand, Fold } from '@element-plus/icons-vue'
+import { TrendCharts, Connection, Timer, User, Document, Expand, Fold, DataLine } from '@element-plus/icons-vue'
 
 // Props
 defineProps({
@@ -107,11 +141,11 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 /* Logo区域 */
 .logo-section {
-  height: 60px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 16px;
+  padding: 0 12px;
   cursor: pointer;
   transition: all var(--fdas-transition-normal);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -122,23 +156,23 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 }
 
 .logo-icon {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .logo-icon svg {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
 }
 
 .logo-text {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   color: #ffffff;
-  margin-left: 12px;
+  margin-left: 8px;
   letter-spacing: 1px;
   background: linear-gradient(135deg, #ffffff 0%, #5a8bff 100%);
   -webkit-background-clip: text;
@@ -155,7 +189,7 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 }
 
 .el-menu:not(.el-menu--collapse) {
-  width: 220px;
+  width: 180px;
 }
 
 .el-menu-item {
@@ -190,23 +224,23 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 /* 底部折叠按钮 */
 .sidebar-footer {
-  height: 48px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px;
+  padding: 6px;
 }
 
 .collapse-btn {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.1);
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #e2e8f0;
   cursor: pointer;
   transition: all var(--fdas-transition-fast);

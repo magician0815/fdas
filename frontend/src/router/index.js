@@ -5,7 +5,7 @@
  *
  * Author: FDAS Team
  * Created: 2026-04-03
- * Updated: 2026-04-10 - 优化路由配置，添加页面标题
+ * Updated: 2026-04-17 - 改进路由守卫，等待用户状态恢复
  */
 
 import { createRouter, createWebHistory } from 'vue-router'
@@ -34,6 +34,24 @@ const routes = [
     name: 'FXData',
     component: () => import('@/views/FXData.vue'),
     meta: { requiresAuth: true, title: '数据分析' }
+  },
+  {
+    path: '/stock-data',
+    name: 'StockData',
+    component: () => import('@/views/StockData.vue'),
+    meta: { requiresAuth: true, title: '股票数据' }
+  },
+  {
+    path: '/futures-data',
+    name: 'FuturesData',
+    component: () => import('@/views/FuturesData.vue'),
+    meta: { requiresAuth: true, title: '期货数据' }
+  },
+  {
+    path: '/bond-data',
+    name: 'BondData',
+    component: () => import('@/views/BondData.vue'),
+    meta: { requiresAuth: true, title: '债券数据' }
   },
   {
     path: '/datasource',
@@ -67,19 +85,45 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫：权限检查
-router.beforeEach((to, from, next) => {
-  const authStore = useAuthStore()
+// 用户状态恢复标记
+let authInitialized = false
+let authInitializing = false
 
-  // 检查是否需要登录
-  if (to.meta.requiresAuth && !authStore.isLoggedIn) {
-    next('/login')
-    return
+// 路由守卫：权限检查
+router.beforeEach(async (to, from, next) => {
+  const authStore = useAuthStore()
+  const sessionId = sessionStorage.getItem('session_id')
+
+  // 如果有session_id但用户状态未恢复，尝试恢复
+  if (sessionId && !authStore.user && !authInitialized && !authInitializing) {
+    authInitializing = true
+    try {
+      await authStore.fetchUser()
+      authInitialized = true
+    } catch (error) {
+      // 恢复失败，清除session_id
+      sessionStorage.removeItem('session_id')
+    }
+    authInitializing = false
   }
 
-  // 检查是否需要admin权限
-  if (to.meta.requiresAdmin && authStore.user?.role !== 'admin') {
-    next('/')
+  // 检查是否需要登录
+  if (to.meta.requiresAuth) {
+    if (authStore.isLoggedIn) {
+      // 已登录，检查admin权限
+      if (to.meta.requiresAdmin && authStore.user?.role !== 'admin') {
+        next('/')
+        return
+      }
+      next()
+    } else if (sessionId && authInitializing) {
+      // 正在初始化，等待
+      // 简单处理：允许继续，后续检查
+      next()
+    } else {
+      // 未登录，跳转登录页
+      next('/login')
+    }
     return
   }
 
