@@ -91,6 +91,10 @@ services:
     volumes:
       # 日志持久化
       - fdas-logs:/app/logs
+      # 前端静态文件挂载（必须）
+      # 构建: cd frontend && npm run build
+      # 挂载: 将frontend/dist目录挂载到容器/app/static
+      - ../../frontend/dist:/app/static:ro
       # 数据持久化（可选）
       - fdas-data:/app/data
 

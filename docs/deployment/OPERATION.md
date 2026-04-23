@@ -221,6 +221,13 @@ async def login(request_body: LoginRequest, request: Request):
 - 前端index.html位于 `/app/static/index.html`
 - 前端资源位于 `/app/static/assets/`
 
+**重要：部署时必须挂载前端静态文件**:
+```yaml
+# docker-compose.yml 中添加
+volumes:
+  - ./frontend/dist:/app/static:ro
+```
+
 **解决方案**:
 main.py已配置：
 ```python
