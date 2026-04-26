@@ -140,13 +140,13 @@ const handleLogin = async () => {
 
   loading.value = true
   try {
-    const success = await authStore.login(form.username, form.password)
-    if (success) {
+    const result = await authStore.login(form.username, form.password)
+    if (result.success) {
       ElMessage.success('登录成功')
       const redirect = route.query.redirect || '/fx-data'
       router.push(redirect)
     } else {
-      ElMessage.error('用户名或密码错误')
+      ElMessage.error(result.message || '用户名或密码错误')
     }
   } catch (error) {
     ElMessage.error('登录失败，请重试')

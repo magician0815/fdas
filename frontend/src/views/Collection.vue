@@ -132,7 +132,7 @@
         </el-form-item>
 
         <el-form-item label="市场" prop="market_id">
-          <el-select v-model="formData.market_id" placeholder="选择市场" disabled>
+          <el-select v-model="formData.market_id" placeholder="选择市场" @change="onMarketChange">
             <el-option
               v-for="m in markets"
               :key="m.id"
@@ -232,6 +232,9 @@ import {
   executeTask as executeTaskApi, getTaskLogs, validateTaskParams
 } from '@/api/collection'
 import { getForexSymbols } from '@/api/forex_symbols'
+import { getStockSymbols } from '@/api/stock_symbols'
+import { getFuturesVarieties } from '@/api/futures_varieties'
+import { getBondSymbols } from '@/api/bond_symbols'
 import { getDatasources } from '@/api/datasources'
 import { getMarkets } from '@/api/markets'
 
@@ -340,6 +343,44 @@ const onDatasourceChange = (dsId) => {
   const ds = datasources.value.find(d => d.id === dsId)
   if (ds?.market_id) {
     formData.market_id = ds.market_id
+    // 根据数据源自动加载对应市场的标的
+    loadSymbolsByMarket(ds.market_id)
+  }
+}
+
+// 市场变化时加载对应标的
+const onMarketChange = (marketId) => {
+  loadSymbolsByMarket(marketId)
+}
+
+// 根据市场ID加载对应标的
+const loadSymbolsByMarket = async (marketId) => {
+  if (!marketId) {
+    symbols.value = []
+    return
+  }
+
+  const market = markets.value.find(m => m.id === marketId)
+  if (!market) return
+
+  try {
+    let res
+    // 股票类市场统一处理（包括stock_cn, stock_us, stock_hk等）
+    if (market.code && market.code.startsWith('stock')) {
+      res = await getStockSymbols({ marketId, activeOnly: true })
+    } else if (market.code === 'forex') {
+      res = await getForexSymbols({ activeOnly: true })
+    } else if (market.code === 'futures' || market.code === 'futures_cn') {
+      res = await getFuturesVarieties({ activeOnly: true })
+    } else if (market.code === 'bond' || market.code.startsWith('bond')) {
+      res = await getBondSymbols({ marketId, activeOnly: true })
+    } else {
+      // 默认外汇
+      res = await getForexSymbols({ activeOnly: true })
+    }
+    if (res.success) symbols.value = res.data
+  } catch (e) {
+    console.error('加载标的失败:', e)
   }
 }
 
@@ -361,14 +402,15 @@ const fetchTasks = async () => {
 // 获取基础数据
 const fetchBaseData = async () => {
   try {
-    const [symbolsRes, datasourcesRes, marketsRes] = await Promise.all([
-      getForexSymbols(),
+    const [datasourcesRes, marketsRes] = await Promise.all([
       getDatasources(),
       getMarkets()
     ])
-    if (symbolsRes.success) symbols.value = symbolsRes.data
     if (datasourcesRes.success) datasources.value = datasourcesRes.data
     if (marketsRes.success) markets.value = marketsRes.data
+
+    // 不再默认加载外汇标的，让用户选择数据源后再加载对应标的
+    symbols.value = []
   } catch (e) {
     ElMessage.error('获取基础数据失败')
   }
@@ -394,6 +436,8 @@ const editTask = (task) => {
   formData.cron_expr = task.cron_expr || ''
   dateRange.value = [task.start_date, task.end_date]
   formData.id = task.id
+  // 编辑时根据数据源加载对应市场的标的
+  loadSymbolsByMarket(task.market_id)
   dialogVisible.value = true
 }
 
@@ -494,18 +538,23 @@ const toggleTask = async (task) => {
       '确认',
       { type: 'warning' }
     )
-    const res = task.is_enabled
-      ? await disableTask(task.id)
-      : await enableTask(task.id)
-    if (res.success) {
+    let res
+    if (task.is_enabled) {
+      res = await disableTask(task.id)
+    } else {
+      res = await enableTask(task.id)
+    }
+    console.log('toggleTask response:', res)
+    if (res && res.success) {
       ElMessage.success(`任务已${action}`)
       fetchTasks()
     } else {
-      ElMessage.error(res.message || `${action}失败`)
+      ElMessage.error(res?.message || res?.error || `${action}失败，请检查控制台`)
     }
   } catch (e) {
+    console.error('toggleTask error:', e)
     if (e !== 'cancel') {
-      ElMessage.error(`${action}失败`)
+      ElMessage.error(`${action}失败: ${e.message || e}`)
     }
   }
 }
