@@ -65,6 +65,7 @@
         :symbolId="selectedSymbolId"
         :loading="loading"
         @fetchData="fetchData"
+        @adjustmentChange="handleAdjustmentChange"
       />
     </div>
 
@@ -101,7 +102,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getStockDailyData } from '@/api/stock_data'
+import { getStockDailyData, getStockAdjustedData } from '@/api/stock_data'
 import { getStockSymbols } from '@/api/stock_symbols'
 import ProChart from '@/components/charts/ProChart.vue'
 import KeyboardWizard from '@/components/charts/KeyboardWizard.vue'
@@ -267,6 +268,45 @@ const fetchData = async () => {
     }
   } catch (e) {
     ElMessage.error('获取股票数据失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 处理复权类型变更（实时从API获取复权数据）
+const handleAdjustmentChange = async (type: string) => {
+  if (!selectedSymbolCode.value) return
+
+  // none 不复权，不需要特殊处理
+  if (type === 'none') {
+    fetchData()
+    return
+  }
+
+  loading.value = true
+  try {
+    // 转换复权类型
+    const adjustMap: Record<string, string> = {
+      'forward': 'qfq',  // 前复权
+      'backward': 'hfq'  // 后复权
+    }
+    const adjust = adjustMap[type] || ''
+
+    // 从API获取复权数据
+    const dataRes = await getStockAdjustedData({
+      symbol_code: selectedSymbolCode.value,
+      adjust: adjust,
+      limit: periodType.value === 'daily' ? 1000 : (periodType.value === 'weekly' ? 208 : 48)
+    })
+
+    if (dataRes.success && dataRes.data) {
+      chartData.value = dataRes.data
+      ElMessage.success(`已切换到${type === 'forward' ? '前复权' : '后复权'}数据`)
+    } else {
+      ElMessage.warning(dataRes.message || '获取复权数据失败')
+    }
+  } catch (e) {
+    ElMessage.error('获取复权数据失败')
   } finally {
     loading.value = false
   }

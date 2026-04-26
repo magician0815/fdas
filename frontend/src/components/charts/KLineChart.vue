@@ -3,7 +3,8 @@
     <!-- 图表头部工具栏 -->
     <div class="chart-toolbar">
       <div class="toolbar-left">
-        <span class="chart-title">{{ symbolName || '选择货币对' }}</span>
+        <span class="chart-title">行情走势</span>
+        <span v-if="symbolName" class="symbol-name-tag">{{ symbolName }}</span>
         <span v-if="currentPrice" class="current-price" :class="priceClass">
           {{ currentPrice }}
         </span>
@@ -17,28 +18,22 @@
           <el-radio-button value="candle">K线</el-radio-button>
           <el-radio-button value="line">折线</el-radio-button>
         </el-radio-group>
-        <!-- 右侧价格轴开关 -->
-        <el-tooltip content="显示右侧价格轴" placement="top">
-          <el-button size="small" :type="showRightAxis ? 'primary' : 'default'" @click="toggleRightAxis">
-            <el-icon><Rank /></el-icon>
-          </el-button>
-        </el-tooltip>
-        <!-- 价格坐标模式切换 -->
-        <el-tooltip :content="priceAxisType === 'log' ? '对数坐标' : '线性坐标'" placement="top">
-          <el-button size="small" :type="priceAxisType === 'log' ? 'primary' : 'default'" @click="togglePriceAxisType">
-            <el-icon><DataLine /></el-icon>
-          </el-button>
-        </el-tooltip>
-        <!-- 区间统计按钮 -->
-        <el-tooltip content="区间统计" placement="top">
-          <el-button size="small" :type="isRangeSelectMode ? 'primary' : 'default'" @click="toggleRangeSelect">
-            <el-icon><DataLine /></el-icon>
-          </el-button>
-        </el-tooltip>
         <!-- 重置视图按钮 -->
         <el-tooltip content="重置视图" placement="top">
           <el-button size="small" @click="resetViewState">
             <el-icon><RefreshRight /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <!-- 缩放成交量副图按钮 -->
+        <el-tooltip :content="props.volumeMaximized ? '恢复成交量' : '放大成交量'" placement="top">
+          <el-button size="small" :type="props.volumeMaximized ? 'primary' : 'default'" @click="$emit('toggleVolume')">
+            <el-icon><FullScreen /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <!-- 缩放MACD副图按钮 -->
+        <el-tooltip :content="props.macdMaximized ? '恢复MACD' : '放大MACD'" placement="top">
+          <el-button size="small" :type="props.macdMaximized ? 'primary' : 'default'" @click="$emit('toggleMacd')">
+            <el-icon><FullScreen /></el-icon>
           </el-button>
         </el-tooltip>
         <!-- 画线工具按钮 -->
@@ -47,25 +42,7 @@
             <el-icon><Edit /></el-icon>
           </el-button>
         </el-tooltip>
-        <!-- K线形态标记按钮 -->
-        <el-dropdown trigger="click" size="small">
-          <el-button size="small">
-            形态 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-checkbox-group v-model="markOptions">
-                <el-dropdown-item>
-                  <el-checkbox label="gap">跳空缺口</el-checkbox>
-                </el-dropdown-item>
-                <el-dropdown-item>
-                  <el-checkbox label="shadow">长影线</el-checkbox>
-                </el-dropdown-item>
-              </el-checkbox-group>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <!-- 涨跌停阈值切换（仅股票市场显示） -->
+      <!-- 涨跌停阈值切换（仅股票市场显示） -->
         <el-dropdown v-if="hasLimitUpDown" trigger="click" size="small">
           <el-button size="small">
             涨跌停 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -123,7 +100,16 @@
                   <el-checkbox label="20">MA20</el-checkbox>
                 </el-dropdown-item>
                 <el-dropdown-item>
+                  <el-checkbox label="30">MA30</el-checkbox>
+                </el-dropdown-item>
+                <el-dropdown-item>
                   <el-checkbox label="60">MA60</el-checkbox>
+                </el-dropdown-item>
+                <el-dropdown-item>
+                  <el-checkbox label="120">MA120</el-checkbox>
+                </el-dropdown-item>
+                <el-dropdown-item>
+                  <el-checkbox label="240">MA240</el-checkbox>
                 </el-dropdown-item>
               </el-checkbox-group>
             </el-dropdown-menu>
@@ -133,7 +119,11 @@
     </div>
 
     <!-- 图表容器 -->
-    <div ref="chartRef" class="chart-area" @mousedown="handleChartMouseDown" @mousemove="handleChartMouseMove" @mouseup="handleChartMouseUp"></div>
+    <div
+      ref="chartRef"
+      class="chart-area"
+      :class="{ 'drawing-cursor': showDrawingToolbar && drawingState.currentTool.value }"
+    ></div>
 
     <!-- 画线工具栏 -->
     <div v-if="showDrawingToolbar" class="drawing-toolbar-wrapper">
@@ -141,12 +131,11 @@
         :tool="drawingState.currentTool.value"
         :color="drawingState.currentColor.value"
         :lineWidth="drawingState.currentLineWidth.value"
-        :magnet="drawingState.magnetEnabled.value"
         @toolChange="drawingState.setTool"
         @colorChange="drawingState.setColor"
         @lineWidthChange="drawingState.setLineWidth"
-        @magnetChange="drawingState.setMagnet"
-        @toolConfigChange="handleToolConfigChange"
+        @clearAll="handleClearAllDrawings"
+        @close="handleCloseDrawingToolbar"
       />
     </div>
 
@@ -158,57 +147,15 @@
       @close="showAdjustmentPanel = false"
     />
 
-    <!-- 区间统计面板 -->
+    <!-- 框选区间统计面板 -->
     <RangeStats
+      v-if="showRangeStats"
       :rangeData="rangeStatsData"
-      @close="clearRangeSelection"
+      @close="closeRangeStats"
     />
 
-    <!-- 光标锁定数据面板 -->
-    <div v-if="isCursorLocked && lockedData" class="cursor-lock-panel">
-      <div class="lock-header">
-        <span class="lock-title">光标锁定</span>
-        <div class="lock-actions">
-          <el-tooltip content="复制数据" placement="top">
-            <el-button size="small" text @click="copyLockedData">
-              <el-icon><CopyDocument /></el-icon>
-            </el-button>
-          </el-tooltip>
-          <el-button size="small" text @click="unlockCursor">
-            <el-icon><Close /></el-icon>
-          </el-button>
-        </div>
-      </div>
-      <div class="lock-data">
-        <div class="lock-row">
-          <span class="lock-label">日期</span>
-          <span class="lock-value">{{ lockedData.date }}</span>
-        </div>
-        <div class="lock-row">
-          <span class="lock-label">开盘</span>
-          <span class="lock-value">{{ formatPrice(lockedData.open) }}</span>
-        </div>
-        <div class="lock-row">
-          <span class="lock-label">最高</span>
-          <span class="lock-value high">{{ formatPrice(lockedData.high) }}</span>
-        </div>
-        <div class="lock-row">
-          <span class="lock-label">最低</span>
-          <span class="lock-value low">{{ formatPrice(lockedData.low) }}</span>
-        </div>
-        <div class="lock-row">
-          <span class="lock-label">收盘</span>
-          <span class="lock-value">{{ formatPrice(lockedData.close) }}</span>
-        </div>
-      </div>
-      <div class="lock-hint">← → 微调 | Space 解锁 | Ctrl+C 复制</div>
-    </div>
-
     <!-- 无数据提示 -->
-    <el-empty v-if="!data || !data.length" description="暂无数据" class="empty-placeholder">
-      <el-button type="primary" size="small" @click="$emit('fetchData')">
-        获取数据
-      </el-button>
+    <el-empty v-if="!data || !data.length" description="暂无数据" :image-size="60" class="empty-placeholder">
     </el-empty>
   </div>
 </template>
@@ -224,7 +171,7 @@
  * Updated: 2026-04-14 - F002: 平滑切换动画、数据范围保持、记住用户选择
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { ArrowDown, Rank, DataLine, Close, CopyDocument, RefreshRight, Edit, Operation } from '@element-plus/icons-vue'
+import { ArrowDown, Close, CopyDocument, RefreshRight, Edit, Operation, FullScreen } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import {
@@ -233,10 +180,6 @@ import {
   getMASeriesOption,
   formatKLineData,
   chartThemes,
-  detectGaps,
-  detectLongShadows,
-  generateGapMarkPoints,
-  generateGapMarkLines,
   MarketType,
   getMarketConfig
 } from '@/utils/chartConfig'
@@ -252,10 +195,11 @@ import {
   calculateAdjustedPrices,
   AdjustmentFactor
 } from '@/utils/stockUtils'
-import RangeStats from './RangeStats.vue'
 import DrawingToolbar from './DrawingToolbar.vue'
 import AdjustmentPanel from './AdjustmentPanel.vue'
+import RangeStats from './RangeStats.vue'
 import { useDrawing } from '@/hooks/useDrawing'
+import logger from '@/services/logger'
 
 // Props定义
 interface Props {
@@ -280,6 +224,10 @@ interface Props {
   theme?: 'light' | 'dark'
   /** 市场类型（可选，默认自动识别） */
   marketType?: MarketType
+  /** 成交量副图是否最大化 */
+  volumeMaximized?: boolean
+  /** MACD副图是否最大化 */
+  macdMaximized?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -289,7 +237,9 @@ const props = withDefaults(defineProps<Props>(), {
   symbolCode: '',
   symbolId: '',
   theme: 'light',
-  marketType: undefined
+  marketType: undefined,
+  volumeMaximized: false,
+  macdMaximized: false
 })
 
 // Emits定义
@@ -297,6 +247,9 @@ const emit = defineEmits<{
   (e: 'fetchData'): void
   (e: 'chartTypeChange', type: 'candle' | 'line'): void
   (e: 'maChange', periods: string[]): void
+  (e: 'toggleVolume'): void
+  (e: 'toggleMacd'): void
+  (e: 'adjustmentChange', type: AdjustmentType): void
 }>()
 
 // 图表容器ref
@@ -314,31 +267,12 @@ const visibleMA = ref<string[]>(
 const showRightAxis = ref<boolean>(
   localStorage.getItem('fdas_right_axis') === 'true'
 )
-const showGapMarks = ref<boolean>(
-  localStorage.getItem('fdas_gap_marks') !== 'false'
-)
-const showLongShadowMarks = ref<boolean>(
-  localStorage.getItem('fdas_shadow_marks') !== 'false'
-)
-
-// K线形态标记选项
-const markOptions = ref<string[]>([
-  showGapMarks.value ? 'gap' : '',
-  showLongShadowMarks.value ? 'shadow' : ''
-].filter(Boolean))
 
 // 快速定位日期
 const jumpToDate = ref<string>('')
 
-// 价格坐标模式
-const priceAxisType = ref<'value' | 'log'>(
-  localStorage.getItem('fdas_price_axis_type') === 'log' ? 'log' : 'value'
-)
-
-// 区间选择状态
-const isRangeSelectMode = ref(false)
-const rangeStatsData = ref<any>(null)
-let selectedRange: { startIndex: number; endIndex: number } | null = null
+// 价格坐标模式 - 固定使用对数坐标
+const priceAxisType = 'value'
 
 // 画线工具状态
 const showDrawingToolbar = ref(false)
@@ -346,9 +280,17 @@ const drawingState = useDrawing({
   chartInstance: () => chartInstance,
   data: () => props.data,
   initialColor: localStorage.getItem('fdas_drawing_color') || '#FF6B6B',
-  initialLineWidth: parseInt(localStorage.getItem('fdas_drawing_width') || '2'),
+  initialLineWidth: parseInt(localStorage.getItem('fdas_drawing_width') || '4'),
   initialMagnet: localStorage.getItem('fdas_drawing_magnet') !== 'false'
 })
+
+// 组件内部的画线管理状态（独立于hook，用于渲染）
+const drawingList = ref<any[]>([])  // 所有已完成的画线
+const activeDrawingData = ref<any | null>(null)  // 正在绘制的临时画线
+const drawingFirstPoint = ref<{ x: number; y: number } | null>(null)  // 点击-点击模式的第一个点
+const drawingSecondPoint = ref<{ x: number; y: number } | null>(null)  // 平行通道三步模式的第二个点
+const drawingStep = ref<number>(1)  // 当前点击步骤（1/2/3，用于平行通道）
+const drawingWaitingSecond = ref(false)  // 是否等待第二次点击
 
 // 复权面板状态
 const showAdjustmentPanel = ref(false)
@@ -359,7 +301,10 @@ const adjustmentType = ref<AdjustmentType>(
 // 处理复权类型变更
 const handleAdjustmentChange = (type: AdjustmentType) => {
   adjustmentType.value = type
-  renderChart(true)
+  // 存储用户偏好
+  localStorage.setItem('fdas_adjustment_type', type)
+  // 通知父组件获取复权数据
+  emit('adjustmentChange', type)
 }
 
 // 切换复权面板显示
@@ -372,8 +317,26 @@ const isCursorLocked = ref(false)
 const lockedDataIndex = ref<number | null>(null)
 const lockedData = ref<any>(null)
 
+// 框选统计状态
+const showRangeStats = ref(false)
+const rangeStatsData = ref<any>(null)
+// 拖拽框选状态（记录矩形对角线两个点）
+const isDragSelecting = ref(false)
+const dragStartIndex = ref<number | null>(null)
+const dragStartPrice = ref<number | null>(null)  // 起始点价格
+const dragEndIndex = ref<number | null>(null)
+const dragEndPrice = ref<number | null>(null)    // 结束点价格
+// 记录mousedown时的屏幕坐标，用于区分单击和拖拽
+const mouseDownScreenX = ref<number | null>(null)
+const mouseDownScreenY = ref<number | null>(null)
+// 标记是否真正开始了拖拽（移动距离超过阈值）
+const hasStartedDrag = ref(false)
+// 拖拽判定阈值（像素）
+const DRAG_THRESHOLD = 5
+
 // 当前DataZoom范围（用于切换时保持）
-let currentZoomRange = { start: 60, end: 100 }
+// 默认显示最近30个周期，不足则显示全部
+let currentZoomRange = { start: 0, end: 100 }
 
 // 计算属性
 const currentPrice = computed(() => {
@@ -494,25 +457,6 @@ const initChart = () => {
     saveViewState()
   })
 
-  // 监听brush选择事件
-  chartInstance.on('brush', (params: any) => {
-    if (params && params.brushType === 'rect' && params.areas && params.areas.length > 0) {
-      const area = params.areas[0]
-      if (area.coordRange && area.coordRange.length >= 2) {
-        // 获取选中的索引范围
-        const xRange = area.coordRange[0]
-        if (xRange && xRange.length >= 2) {
-          const startIndex = Math.floor(xRange[0])
-          const endIndex = Math.floor(xRange[1])
-          selectedRange = { startIndex, endIndex }
-          rangeStatsData.value = calculateRangeStats(startIndex, endIndex)
-        }
-      }
-    } else if (params && params.brushType === 'clear') {
-      clearRangeSelection()
-    }
-  })
-
   // 监听鼠标移动，记录当前位置索引（用于光标锁定）
   chartInstance.on('mousemove', (params: any) => {
     if (params && params.dataIndex !== undefined && !isCursorLocked.value) {
@@ -524,24 +468,59 @@ const initChart = () => {
   chartInstance.getZr().on('dblclick', () => {
     resetView()
   })
+
+  // 通过zrender监听鼠标事件（用于框选功能和边缘自动滚动）
+  const zr = chartInstance.getZr()
+
+  // mousedown事件
+  zr.on('mousedown', (e: any) => {
+    handleChartMouseDown(e)
+  })
+
+  // mousemove事件（包含边缘自动滚动检测）
+  zr.on('mousemove', (e: any) => {
+    handleChartMouseMove(e)
+    handleEdgeAutoScroll(e)
+  })
+
+  // mouseup事件
+  zr.on('mouseup', (e: any) => {
+    handleChartMouseUp(e)
+    stopEdgeAutoScroll()
+  })
+
+  // mouseout事件（离开图表时停止自动滚动）
+  zr.on('mouseout', () => {
+    stopEdgeAutoScroll()
+  })
 }
 
 /**
- * 重置视图到默认状态.
+ * 重置视图到默认状态 - 显示最近60周期.
  */
 const resetView = () => {
-  currentZoomRange = { start: 60, end: 100 }
+  // 计算默认显示60周期的范围
+  const totalData = props.data.length
+  if (totalData <= 60) {
+    // 数据不足60周期，显示全部
+    currentZoomRange = { start: 0, end: 100 }
+  } else {
+    // 显示最近60周期
+    const percentPerBar = 100 / totalData
+    const startPercent = (totalData - 60) * percentPerBar
+    currentZoomRange = { start: startPercent, end: 100 }
+  }
   if (chartInstance) {
     chartInstance.dispatchAction({
       type: 'dataZoom',
-      start: 60,
-      end: 100
+      start: currentZoomRange.start,
+      end: currentZoomRange.end
     })
   }
 }
 
 /**
- * 处理键盘事件（ESC重置视图，Space锁定光标，方向键微调，Ctrl+C复制，Delete删除画线）.
+ * 处理键盘事件（ESC重置视图，Space锁定光标，方向键移动十字线，Ctrl+C复制，Delete删除画线）.
  */
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
@@ -571,18 +550,22 @@ const handleKeydown = (e: KeyboardEvent) => {
     drawingState.deleteSelectedDrawing()
     ElMessage.success('画线已删除')
   }
-  // 方向键微调光标位置
-  if (isCursorLocked.value) {
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      moveCursor(-1)
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      moveCursor(1)
-    }
+  // 方向键：移动十字线/光标位置（始终以十字线为中心）
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault()
+    moveCursorByKline(-1)  // 向左移动一根K线
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault()
+    moveCursorByKline(1)   // 向右移动一根K线
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    zoomAtCursor(-5)  // 以十字线为中心放大
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    zoomAtCursor(5)   // 以十字线为中心缩小
   }
-  // Ctrl+方向键快速跳转（不锁定光标时）
-  if (!isCursorLocked.value && (e.ctrlKey || e.metaKey)) {
+  // Ctrl+方向键快速跳转视图
+  if ((e.ctrlKey || e.metaKey) && !isCursorLocked.value) {
     if (e.key === 'ArrowLeft') {
       e.preventDefault()
       fastJump(-100)  // 向左跳转100根K线
@@ -661,6 +644,148 @@ const moveCursor = (delta: number) => {
 }
 
 /**
+ * 按K线单位移动十字线（用于键盘导航）.
+ * 十字线始终跟随键盘移动，到达可见区域边缘时自动移动视图.
+ */
+const moveCursorByKline = (delta: number) => {
+  if (!props.data || !props.data.length || !chartInstance) return
+
+  // 如果未锁定，则自动锁定到当前可见区域中心
+  if (!isCursorLocked.value) {
+    const visibleCenterIndex = getVisibleCenterIndex()
+    lockCursorAt(visibleCenterIndex)
+  }
+
+  // 获取当前锁定的索引
+  const currentIndex = lockedDataIndex.value ?? props.data.length - 1
+  const newIndex = currentIndex + delta
+
+  // 检查是否到达数据边界
+  if (newIndex < 0) {
+    return
+  }
+  if (newIndex >= props.data.length) {
+    return
+  }
+
+  // 锁定到新位置
+  lockCursorAt(newIndex)
+
+  // 检查新位置是否在可见范围内，如果不在则移动视图
+  const visibleRange = getVisibleRange()
+  const viewWidth = visibleRange.end - visibleRange.start
+
+  // 如果新索引在可见范围外，移动视图使其可见
+  if (newIndex < visibleRange.start) {
+    // 向左移动视图，新索引位于可见区域左侧10%位置
+    const percentPerKline = 100 / props.data.length
+    const newViewStart = newIndex * percentPerKline
+    const newViewEnd = newViewStart + viewWidth
+    shiftViewTo(newViewStart, newViewEnd)
+  } else if (newIndex >= visibleRange.end) {
+    // 向右移动视图，新索引位于可见区域右侧90%位置
+    const percentPerKline = 100 / props.data.length
+    const newViewEnd = (newIndex + 1) * percentPerKline
+    const newViewStart = newViewEnd - viewWidth
+    shiftViewTo(newViewStart, newViewEnd)
+  }
+}
+
+/**
+ * 以十字线为中心进行缩放.
+ */
+const zoomAtCursor = (delta: number) => {
+  if (!chartInstance || !props.data.length) return
+
+  // 如果未锁定，先锁定到可见区域中心
+  if (!isCursorLocked.value) {
+    const visibleCenterIndex = getVisibleCenterIndex()
+    lockCursorAt(visibleCenterIndex)
+  }
+
+  const lockedIndex = lockedDataIndex.value ?? 0
+  const percentPerKline = 100 / props.data.length
+  const lockedPercent = lockedIndex * percentPerKline
+
+  // 当前视图宽度
+  const currentWidth = currentZoomRange.end - currentZoomRange.start
+  let newWidth = currentWidth + delta
+
+  // 限制宽度在5-100之间
+  if (newWidth < 5) newWidth = 5
+  if (newWidth > 100) newWidth = 100
+
+  // 以锁定位置为中心计算新的起始和结束位置
+  const lockedRatio = (lockedPercent - currentZoomRange.start) / currentWidth
+  let newStart = lockedPercent - lockedRatio * newWidth
+  let newEnd = lockedPercent + (1 - lockedRatio) * newWidth
+
+  // 限制范围在0-100之间
+  if (newStart < 0) {
+    newStart = 0
+    newEnd = newWidth
+  }
+  if (newEnd > 100) {
+    newEnd = 100
+    newStart = 100 - newWidth
+  }
+
+  currentZoomRange.start = newStart
+  currentZoomRange.end = newEnd
+
+  chartInstance.dispatchAction({
+    type: 'dataZoom',
+    start: newStart,
+    end: newEnd
+  })
+}
+
+/**
+ * 获取当前可见区域的K线索引范围.
+ */
+const getVisibleRange = () => {
+  const totalData = props.data.length
+  const startIndex = Math.floor((currentZoomRange.start / 100) * totalData)
+  const endIndex = Math.ceil((currentZoomRange.end / 100) * totalData)
+  return { start: startIndex, end: endIndex }
+}
+
+/**
+ * 获取当前可见区域中心的K线索引.
+ */
+const getVisibleCenterIndex = () => {
+  const totalData = props.data.length
+  const centerPercent = (currentZoomRange.start + currentZoomRange.end) / 2
+  return Math.floor((centerPercent / 100) * totalData)
+}
+
+/**
+ * 移动视图到指定百分比位置.
+ */
+const shiftViewTo = (start: number, end: number) => {
+  // 限制范围在0-100之间
+  if (start < 0) start = 0
+  if (end > 100) end = 100
+  if (end - start < 5) {
+    // 最小宽度5%
+    end = start + 5
+    if (end > 100) {
+      end = 100
+      start = 95
+    }
+  }
+
+  currentZoomRange.start = start
+  currentZoomRange.end = end
+
+  chartInstance.dispatchAction({
+    type: 'dataZoom',
+    start: start,
+    end: end
+  })
+}
+
+/**
  * 快速跳转（Ctrl+方向键）.
  */
 const fastJump = (delta: number) => {
@@ -690,6 +815,74 @@ const fastJump = (delta: number) => {
   }
 
   // 应用新的DataZoom范围
+  currentZoomRange.start = newStart
+  currentZoomRange.end = newEnd
+
+  chartInstance.dispatchAction({
+    type: 'dataZoom',
+    start: newStart,
+    end: newEnd
+  })
+}
+
+/**
+ * 左右移动视图（方向键）.
+ */
+const shiftView = (delta: number) => {
+  if (!chartInstance) return
+
+  const currentWidth = currentZoomRange.end - currentZoomRange.start
+  let newStart = currentZoomRange.start + delta
+  let newEnd = currentZoomRange.end + delta
+
+  // 限制范围在0-100之间
+  if (newStart < 0) {
+    newStart = 0
+    newEnd = currentWidth
+  }
+  if (newEnd > 100) {
+    newEnd = 100
+    newStart = 100 - currentWidth
+  }
+
+  currentZoomRange.start = newStart
+  currentZoomRange.end = newEnd
+
+  chartInstance.dispatchAction({
+    type: 'dataZoom',
+    start: newStart,
+    end: newEnd
+  })
+}
+
+/**
+ * 缩放视图（上下键）.
+ */
+const zoomView = (delta: number) => {
+  if (!chartInstance) return
+
+  const currentWidth = currentZoomRange.end - currentZoomRange.start
+  let newWidth = currentWidth + delta
+
+  // 限制宽度在5-100之间
+  if (newWidth < 5) newWidth = 5
+  if (newWidth > 100) newWidth = 100
+
+  // 保持中心点不变
+  const center = (currentZoomRange.start + currentZoomRange.end) / 2
+  let newStart = center - newWidth / 2
+  let newEnd = center + newWidth / 2
+
+  // 限制范围在0-100之间
+  if (newStart < 0) {
+    newStart = 0
+    newEnd = newWidth
+  }
+  if (newEnd > 100) {
+    newEnd = 100
+    newStart = 100 - newWidth
+  }
+
   currentZoomRange.start = newStart
   currentZoomRange.end = newEnd
 
@@ -750,6 +943,393 @@ const handleJumpToDate = (dateStr: string) => {
   })
 
   ElMessage.success(`已定位到 ${dateStr}`)
+}
+
+/**
+ * 关闭框选统计面板.
+ * 清除矩形框和markArea并重新渲染图表.
+ * 清除所有拖拽相关状态。
+ */
+const closeRangeStats = () => {
+  showRangeStats.value = false
+  rangeStatsData.value = null
+  isDragSelecting.value = false
+  dragStartIndex.value = null
+  dragStartPrice.value = null
+  dragEndIndex.value = null
+  dragEndPrice.value = null
+  mouseDownScreenX.value = null
+  mouseDownScreenY.value = null
+  hasStartedDrag.value = false
+  // 清除矩形框
+  clearDragRect()
+  // 重新渲染图表以清除markArea
+  renderChart()
+}
+
+/**
+ * 渲染拖拽过程中的矩形框.
+ * 使用ECharts graphic组件绘制矩形，更可靠。
+ */
+const renderDragRect = () => {
+  if (!chartInstance || dragStartIndex.value === null || dragEndIndex.value === null ||
+      dragStartPrice.value === null || dragEndPrice.value === null) return
+
+  // 计算矩形的边界
+  const leftIndex = Math.min(dragStartIndex.value, dragEndIndex.value)
+  const rightIndex = Math.max(dragStartIndex.value, dragEndIndex.value)
+  const topPrice = Math.max(dragStartPrice.value, dragEndPrice.value)
+  const bottomPrice = Math.min(dragStartPrice.value, dragEndPrice.value)
+
+  // 将图表坐标转换为像素坐标
+  const leftPixel = chartInstance.convertToPixel('grid', [leftIndex, bottomPrice])
+  const rightPixel = chartInstance.convertToPixel('grid', [rightIndex, topPrice])
+
+  // 使用graphic绘制矩形
+  const graphicElements = [
+    {
+      type: 'rect',
+      z: 100,
+      shape: {
+        x: leftPixel[0],
+        y: rightPixel[1],  // y坐标：topPrice对应的像素位置
+        width: rightPixel[0] - leftPixel[0],
+        height: leftPixel[1] - rightPixel[1]  // 高度：从bottom到top
+      },
+      style: {
+        fill: 'rgba(59, 130, 246, 0.15)',
+        stroke: '#3b82f6',
+        lineWidth: 1
+      }
+    },
+    {
+      type: 'text',
+      z: 101,
+      style: {
+        text: '选择区域',
+        x: leftPixel[0] + 5,
+        y: rightPixel[1] + 5,
+        fontSize: 10,
+        fill: '#3b82f6'
+      }
+    }
+  ]
+
+  chartInstance.setOption({
+    graphic: graphicElements
+  }, { silent: true })
+}
+
+/**
+ * 清除拖拽过程中的矩形框.
+ */
+const clearDragRect = () => {
+  if (!chartInstance) return
+  chartInstance.setOption({
+    graphic: []
+  }, { silent: true })
+}
+
+/**
+ * 渲染画线图形.
+ * 使用组件内部的drawingList状态.
+ */
+const renderDrawingGraphics = () => {
+  if (!chartInstance) return
+
+  const graphicElements: any[] = []
+
+  // 渲染所有已完成的画线（使用组件内部状态）
+  for (const drawing of drawingList.value) {
+    const elements = convertDrawingToGraphicElements(drawing, false)
+    graphicElements.push(...elements)
+  }
+
+  // 渲染临时预览线（使用组件内部状态）
+  if (activeDrawingData.value) {
+    const tempElements = convertDrawingToGraphicElements(activeDrawingData.value, true)
+    graphicElements.push(...tempElements)
+  }
+
+  chartInstance.setOption({
+    graphic: graphicElements
+  }, { silent: true })
+}
+
+/**
+ * 清除所有画线图形.
+ */
+const clearDrawingGraphics = () => {
+  if (!chartInstance) return
+  chartInstance.setOption({
+    graphic: []
+  }, { silent: true })
+}
+
+/**
+ * 处理清除所有画线.
+ * 清空数据并重新渲染图表.
+ */
+const handleClearAllDrawings = () => {
+  drawingList.value = []
+  activeDrawingData.value = null
+  drawingFirstPoint.value = null
+  drawingSecondPoint.value = null
+  drawingWaitingSecond.value = false
+  drawingStep.value = 1
+  // 重新渲染图表以清除graphic
+  renderChart()
+}
+
+/**
+ * 处理关闭画线工具栏.
+ */
+const handleCloseDrawingToolbar = () => {
+  showDrawingToolbar.value = false
+  drawingState.setTool(null)
+  activeDrawingData.value = null
+  drawingFirstPoint.value = null
+  drawingSecondPoint.value = null
+  drawingWaitingSecond.value = false
+  drawingStep.value = 1
+  // 重新渲染图表以清除graphic
+  renderChart()
+}
+
+/**
+ * 将画线数据转换为ECharts graphic元素.
+ * 只保留line、rectangle、fibonacci、parallelChannel.
+ */
+const convertDrawingToGraphicElements = (drawing: any, isTemp: boolean): any[] => {
+  const elements: any[] = []
+  if (!chartInstance) return elements
+
+  // 坐标转换函数
+  const toPixel = (x: number, y: number): [number, number] => {
+    try {
+      return chartInstance!.convertToPixel('grid', [x, y])
+    } catch (e) {
+      return [x, y]
+    }
+  }
+
+  // 直线
+  if (drawing.type === 'line' && drawing.points.length >= 2) {
+    const [x1, y1] = toPixel(drawing.points[0].x, drawing.points[0].y)
+    const [x2, y2] = toPixel(drawing.points[1].x, drawing.points[1].y)
+    elements.push({
+      type: 'line',
+      shape: { x1, y1, x2, y2 },
+      style: { stroke: drawing.color, lineWidth: drawing.lineWidth },
+      z: 100
+    })
+  }
+
+  // 矩形
+  if (drawing.type === 'rectangle' && drawing.points.length >= 2) {
+    const [x1, y1] = toPixel(drawing.points[0].x, drawing.points[0].y)
+    const [x2, y2] = toPixel(drawing.points[1].x, drawing.points[1].y)
+    elements.push({
+      type: 'rect',
+      shape: {
+        x: Math.min(x1, x2),
+        y: Math.min(y1, y2),
+        width: Math.abs(x2 - x1),
+        height: Math.abs(y2 - y1)
+      },
+      style: { stroke: drawing.color, lineWidth: drawing.lineWidth, fill: drawing.color + '20' },
+      z: 100
+    })
+  }
+
+  // 黄金分割线（两步点击完成）
+  if (drawing.type === 'fibonacci' && drawing.points.length >= 2) {
+    const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
+    const startY = drawing.points[0].y
+    const endY = drawing.points[1].y
+    const priceRange = Math.abs(endY - startY)
+    const baseY = Math.min(startY, endY)
+    const chartWidth = chartInstance.getWidth() || 800
+
+    levels.forEach((level) => {
+      const levelY = baseY + priceRange * level
+      const [, pixelY] = toPixel(0, levelY)
+      elements.push({
+        type: 'line',
+        shape: { x1: 0, y1: pixelY, x2: chartWidth, y2: pixelY },
+        style: {
+          stroke: level === 0.5 ? '#f59e0b' : drawing.color,
+          lineWidth: level === 0.5 ? drawing.lineWidth + 1 : drawing.lineWidth,
+          opacity: 0.7
+        },
+        z: 99
+      })
+      elements.push({
+        type: 'text',
+        style: { text: `${(level * 100).toFixed(1)}%`, fill: drawing.color, fontSize: 11 },
+        x: 5, y: pixelY - 5,
+        z: 100
+      })
+    })
+  }
+
+  // 平行通道线（三步点击：第1、2点画主线，第3点确定平行线位置）
+  if (drawing.type === 'parallelChannel') {
+    const points = drawing.points
+    // 已完成：3个点，主线+平行线
+    if (points.length >= 3) {
+      const [p1x, p1y] = toPixel(points[0].x, points[0].y)
+      const [p2x, p2y] = toPixel(points[1].x, points[1].y)
+      const [, p3y] = toPixel(0, points[2].y)  // 只取y坐标（第3点的高度）
+
+      // 主线方向向量
+      const dx = p2x - p1x
+      const dy = p2y - p1y
+
+      // 主线
+      elements.push({
+        type: 'line',
+        shape: { x1: p1x, y1: p1y, x2: p2x, y2: p2y },
+        style: { stroke: drawing.color, lineWidth: drawing.lineWidth },
+        z: 100
+      })
+      // 平行线：左侧端点x坐标与主线起点对齐（垂直对齐），y坐标用第3点
+      elements.push({
+        type: 'line',
+        shape: { x1: p1x, y1: p3y, x2: p1x + dx, y2: p3y + dy },
+        style: { stroke: drawing.color, lineWidth: drawing.lineWidth, opacity: 0.7 },
+        z: 99
+      })
+    }
+    // 临时预览（第二步或第三步）
+    else if (points.length >= 2 && isTemp) {
+      const [p1x, p1y] = toPixel(points[0].x, points[0].y)
+      const [p2x, p2y] = toPixel(points[1].x, points[1].y)
+      // 主线（第二步和第三步都显示）
+      elements.push({
+        type: 'line',
+        shape: { x1: p1x, y1: p1y, x2: p2x, y2: p2y },
+        style: { stroke: drawing.color, lineWidth: drawing.lineWidth },
+        z: 100
+      })
+      // 第三步预览：显示平行线预览（左侧端点x与主线起点垂直对齐）
+      if (points.length >= 3) {
+        const [, p3y] = toPixel(0, points[2].y)  // 只取y坐标
+        const dx = p2x - p1x
+        const dy = p2y - p1y
+        elements.push({
+          type: 'line',
+          shape: { x1: p1x, y1: p3y, x2: p1x + dx, y2: p3y + dy },
+          style: { stroke: drawing.color, lineWidth: drawing.lineWidth, opacity: 0.5 },
+          z: 99
+        })
+      }
+    }
+  }
+
+  return elements
+}
+
+/**
+ * 结束拖拽框选并计算统计.
+ * 统计矩形范围内的K线数据。
+ * 清除临时矩形框，显示最终统计结果。
+ */
+const endDragSelect = () => {
+  if (dragStartIndex.value === null || dragEndIndex.value === null ||
+      dragStartPrice.value === null || dragEndPrice.value === null) {
+    isDragSelecting.value = false
+    clearDragRect()
+    return
+  }
+
+  // 计算矩形的边界
+  const leftIndex = Math.min(dragStartIndex.value, dragEndIndex.value)
+  const rightIndex = Math.max(dragStartIndex.value, dragEndIndex.value)
+  const topPrice = Math.max(dragStartPrice.value, dragEndPrice.value)
+  const bottomPrice = Math.min(dragStartPrice.value, dragEndPrice.value)
+
+  // 确保索引有效
+  let startIndex = Math.max(0, leftIndex)
+  let endIndex = Math.min(props.data.length - 1, rightIndex)
+
+  // 清除临时矩形框
+  clearDragRect()
+
+  // 计算区间统计数据
+  calculateRangeStatsInRect(startIndex, endIndex, bottomPrice, topPrice)
+
+  // 重置拖拽状态
+  isDragSelecting.value = false
+}
+
+/**
+ * 计算矩形范围内的区间统计数据.
+ * 只统计完全在矩形范围内的K线（高低价都在矩形内）.
+ */
+const calculateRangeStatsInRect = (startIndex: number, endIndex: number, bottomPrice: number, topPrice: number) => {
+  if (!props.data.length || startIndex > endIndex) return
+
+  const selectedData = props.data.slice(startIndex, endIndex + 1)
+  if (selectedData.length === 0) return
+
+  // 范围内最早的开盘价
+  const startItem = selectedData[0]
+  const startPrice = parseFloat(startItem.open as string)
+
+  // 范围内最晚的收盘价
+  const endItem = selectedData[selectedData.length - 1]
+  const endPrice = parseFloat(endItem.close as string)
+
+  // 涨跌幅度
+  const changeAmount = endPrice - startPrice
+  const changePercent = (changeAmount / startPrice) * 100
+
+  // 范围内最高的最高价
+  const highPrice = Math.max(...selectedData.map(d => parseFloat(d.high as string)))
+
+  // 范围内最低的最低价
+  const lowPrice = Math.min(...selectedData.map(d => parseFloat(d.low as string)))
+
+  // 振幅
+  const amplitude = ((highPrice - lowPrice) / lowPrice) * 100
+
+  // 平均价格
+  const avgPrice = selectedData.reduce((sum, d) => sum + parseFloat(d.close as string), 0) / selectedData.length
+
+  // 构建统计数据对象，包含矩形边界信息用于markArea绘制
+  rangeStatsData.value = {
+    startDate: startItem.date,
+    endDate: endItem.date,
+    startIndex: startIndex,  // 用于markArea
+    endIndex: endIndex,      // 用于markArea
+    topPrice: topPrice,      // 矩形上边界（选择区域的最高价格）
+    bottomPrice: bottomPrice, // 矩形下边界（选择区域的最低价格）
+    periods: selectedData.length,
+    startPrice: startPrice.toFixed(4),
+    endPrice: endPrice.toFixed(4),
+    changeAmount: changeAmount.toFixed(4),
+    changePercent: changePercent.toFixed(2) + '%',
+    highPrice: highPrice.toFixed(4),
+    lowPrice: lowPrice.toFixed(4),
+    amplitude: amplitude.toFixed(2) + '%',
+    avgPrice: avgPrice.toFixed(4)
+  }
+
+  // 如果是股票市场，添加涨跌停统计
+  if (hasLimitUpDown.value) {
+    const limitStats = calculateLimitUpDownStats(selectedData, detectedMarketType.value)
+    rangeStatsData.value.limitUpCount = limitStats.limitUpCount
+    rangeStatsData.value.limitDownCount = limitStats.limitDownCount
+    rangeStatsData.value.limitUpDates = limitStats.limitUpDates
+    rangeStatsData.value.limitDownDates = limitStats.limitDownDates
+    rangeStatsData.value.limitUpRatio = limitStats.limitUpRatio
+    rangeStatsData.value.limitDownRatio = limitStats.limitDownRatio
+  }
+
+  showRangeStats.value = true
+  // 重新渲染图表以显示markArea
+  renderChart()
 }
 
 /**
@@ -852,8 +1432,8 @@ const restoreViewState = () => {
   if (saved) {
     try {
       const state = JSON.parse(saved)
-      currentZoomRange.start = state.zoomStart || 60
-      currentZoomRange.end = state.zoomEnd || 100
+      currentZoomRange.start = state.zoomStart
+      currentZoomRange.end = state.zoomEnd
       chartType.value = state.chartType || 'candle'
       visibleMA.value = state.visibleMA || ['5', '10', '20', '60']
       showRightAxis.value = state.showRightAxis || false
@@ -868,11 +1448,11 @@ const restoreViewState = () => {
       }
     } catch (e) {
       // 解析失败，使用默认值
-      currentZoomRange = { start: 60, end: 100 }
+      resetView()
     }
   } else {
-    // 无保存状态，使用默认值
-    currentZoomRange = { start: 60, end: 100 }
+    // 无保存状态，使用默认值（显示最近30周期）
+    resetView()
   }
 }
 
@@ -887,19 +1467,12 @@ const resetViewState = () => {
   }
 
   // 恢复默认值
-  currentZoomRange = { start: 60, end: 100 }
   chartType.value = 'candle'
   visibleMA.value = ['5', '10', '20', '60']
   showRightAxis.value = false
 
-  // 应用到图表
-  if (chartInstance) {
-    chartInstance.dispatchAction({
-      type: 'dataZoom',
-      start: 60,
-      end: 100
-    })
-  }
+  // 应用默认30周期显示
+  resetView()
 
   // 重新渲染
   renderChart(false)
@@ -919,7 +1492,7 @@ const renderChart = (animate = false) => {
   }
 
   // 获取基础配置
-  const baseOption = getKLineBaseOption(props.theme, priceAxisType.value)
+  const baseOption = getKLineBaseOption(props.theme, priceAxisType)
 
   // 复权数据处理（仅股票市场且有复权需求时）
   let processedData = props.data
@@ -940,8 +1513,8 @@ const renderChart = (animate = false) => {
   // 设置X轴数据
   baseOption.xAxis[0].data = dates
 
-  // 设置图例
-  baseOption.legend.data = ['K线']
+  // 设置图例 - 只显示均线
+  baseOption.legend.data = []
 
   // 设置动画 - 切换时启用平滑动画
   baseOption.animation = animate
@@ -974,7 +1547,8 @@ const renderChart = (animate = false) => {
         label: {
           formatter: `昨收: ${prevClose.toFixed(marketConfig.value.pricePrecision)}`,
           color: '#f59e0b',
-          fontSize: 11
+          fontSize: 11,
+          position: 'start'  // 标签在左端显示
         }
       })
     }
@@ -1101,34 +1675,37 @@ const renderChart = (animate = false) => {
       }
     }
 
-    // 添加缺口标记
-    if (showGapMarks.value && props.data.length >= 2) {
-      const gaps = detectGaps(props.data)
-      const gapMarkPoints = generateGapMarkPoints(gaps, props.theme)
-      if (gapMarkPoints) {
-        klineOption.markPoint = gapMarkPoints
-      }
-    }
+    // 添加框选范围视觉指示（markArea）
+    if (showRangeStats.value && rangeStatsData.value) {
+      // 使用存储的矩形边界信息绘制markArea
+      const startIndex = rangeStatsData.value.startIndex
+      const endIndex = rangeStatsData.value.endIndex
+      const topPrice = rangeStatsData.value.topPrice
+      const bottomPrice = rangeStatsData.value.bottomPrice
 
-    // 添加长影线标记
-    if (showLongShadowMarks.value && props.data.length >= 1) {
-      const longShadows = detectLongShadows(props.data)
-      if (longShadows.length > 0) {
-        // 为长影线K线添加特殊样式
-        const styledData = formatKLineData(props.data).map((item, index) => {
-          const shadow = longShadows.find(s => s.index === index)
-          if (shadow) {
-            return {
-              value: item,
-              itemStyle: {
-                borderColor: shadow.type === 'longUpperShadow' ? '#f59e0b' : '#8b5cf6',
-                borderWidth: 2
-              }
-            }
+      if (startIndex !== undefined && endIndex !== undefined &&
+          topPrice !== undefined && bottomPrice !== undefined) {
+        klineOption.markArea = {
+          data: [
+            [
+              { xAxis: startIndex, yAxis: bottomPrice },
+              { xAxis: endIndex, yAxis: topPrice }
+            ]
+          ],
+          itemStyle: {
+            color: 'rgba(59, 130, 246, 0.15)',
+            borderColor: '#3b82f6',
+            borderWidth: 1,
+            borderType: 'solid'
+          },
+          label: {
+            show: true,
+            formatter: '框选范围',
+            position: 'insideTopLeft',
+            fontSize: 10,
+            color: '#3b82f6'
           }
-          return item
-        })
-        klineOption.data = styledData
+        }
       }
     }
 
@@ -1153,6 +1730,28 @@ const renderChart = (animate = false) => {
         ])
       },
       data: props.data.map(d => parseFloat(d.close as string) || 0),
+      // 添加框选范围视觉指示（markArea）
+      markArea: showRangeStats.value && rangeStatsData.value ? {
+        data: [
+          [
+            { xAxis: rangeStatsData.value.startIndex, yAxis: rangeStatsData.value.bottomPrice },
+            { xAxis: rangeStatsData.value.endIndex, yAxis: rangeStatsData.value.topPrice }
+          ]
+        ],
+        itemStyle: {
+          color: 'rgba(59, 130, 246, 0.15)',
+          borderColor: '#3b82f6',
+          borderWidth: 1,
+          borderType: 'solid'
+        },
+        label: {
+          show: true,
+          formatter: '框选范围',
+          position: 'insideTopLeft',
+          fontSize: 10,
+          color: '#3b82f6'
+        }
+      } : undefined,
       // 添加昨收价基准线
       markLine: props.data.length >= 2 ? {
         symbol: 'none',
@@ -1163,7 +1762,7 @@ const renderChart = (animate = false) => {
         },
         label: {
           show: true,
-          position: 'end',
+          position: 'start',  // 标签在左端显示
           formatter: (params) => `昨收: ${params.value.toFixed(4)}`,
           color: '#f59e0b',
           fontSize: 11
@@ -1177,19 +1776,20 @@ const renderChart = (animate = false) => {
       } : undefined
     }
     series.push(lineSeries)
-    baseOption.legend.data.push('收盘价')
   }
 
-  // 添加均线
-  visibleMA.value.forEach(period => {
-    const periodNum = parseInt(period)
-    if (props.maData && props.maData[`ma${period}`]) {
-      const maOption = getMASeriesOption(periodNum, props.theme)
-      maOption.data = props.maData[`ma${period}`].map(m => m.value)
-      series.push(maOption)
-      baseOption.legend.data.push(`MA${period}`)
-    }
-  })
+  // 添加均线（仅在K线模式下显示）
+  if (chartType.value === 'candle') {
+    visibleMA.value.forEach(period => {
+      const periodNum = parseInt(period)
+      if (props.maData && props.maData[`ma${period}`]) {
+        const maOption = getMASeriesOption(periodNum, props.theme)
+        maOption.data = props.maData[`ma${period}`].map(m => m.value)
+        series.push(maOption)
+        baseOption.legend.data.push(`MA${period}`)
+      }
+    })
+  }
 
   // 保持DataZoom范围
   if (baseOption.dataZoom && baseOption.dataZoom.length > 0) {
@@ -1247,23 +1847,15 @@ const toggleRightAxis = () => {
 }
 
 /**
- * 切换价格坐标模式.
- */
-const togglePriceAxisType = () => {
-  priceAxisType.value = priceAxisType.value === 'value' ? 'log' : 'value'
-  localStorage.setItem('fdas_price_axis_type', priceAxisType.value)
-  renderChart(false)
-}
-
-/**
  * 切换画线工具栏显示.
  */
 const toggleDrawingToolbar = () => {
   showDrawingToolbar.value = !showDrawingToolbar.value
   if (!showDrawingToolbar.value) {
-    // 关闭工具栏时取消当前工具选择
+    // 关闭工具栏时取消当前工具选择和清除画线
     drawingState.setTool(null)
     drawingState.cancelDrawing()
+    clearDrawingGraphics()
   }
 }
 
@@ -1276,138 +1868,412 @@ const handleToolConfigChange = (config: { tool: string; params: Record<string, a
 }
 
 /**
- * 处理图表鼠标按下事件（画线开始）.
+ * 处理图表鼠标按下事件.
+ * 所有画线工具在组件内直接处理.
+ * line/rectangle/fibonacci: 两步点击模式
+ * parallelChannel: 三步点击模式
  */
-const handleChartMouseDown = (e: MouseEvent) => {
-  if (!drawingState.currentTool.value || !chartInstance) return
+const handleChartMouseDown = (e: any) => {
+  if (!chartInstance) return
 
-  // 获取鼠标位置对应的图表坐标
   const pointInGrid = getMousePositionInGrid(e)
-  if (pointInGrid) {
-    drawingState.startDrawing(pointInGrid)
+  if (!pointInGrid) return
+
+  const tool = drawingState.currentTool.value
+  const color = drawingState.currentColor.value
+  const lineWidth = drawingState.currentLineWidth.value
+
+  // 如果有画线工具
+  if (tool) {
+    // 两步点击模式的工具（line, rectangle, fibonacci）
+    if (tool === 'line' || tool === 'rectangle' || tool === 'fibonacci') {
+      if (drawingWaitingSecond.value && drawingFirstPoint.value) {
+        // 第二次点击完成画线
+        const drawing = {
+          id: `drawing_${Date.now()}`,
+          type: tool,
+          points: [drawingFirstPoint.value, pointInGrid],
+          color,
+          lineWidth,
+          createdAt: Date.now()
+        }
+        drawingList.value.push(drawing)
+        // 清理临时状态，准备画下一条线
+        drawingWaitingSecond.value = false
+        drawingFirstPoint.value = null
+        activeDrawingData.value = null
+        // 渲染
+        renderDrawingGraphics()
+      } else {
+        // 第一次点击
+        drawingFirstPoint.value = pointInGrid
+        drawingWaitingSecond.value = true
+        activeDrawingData.value = {
+          type: tool,
+          points: [pointInGrid, pointInGrid],
+          color,
+          lineWidth
+        }
+        renderDrawingGraphics()
+      }
+    }
+    // 平行通道：三步点击模式
+    else if (tool === 'parallelChannel') {
+      if (drawingStep.value === 1) {
+        // 第一步：确定第一个端点
+        drawingFirstPoint.value = pointInGrid
+        drawingStep.value = 2
+        activeDrawingData.value = {
+          type: tool,
+          points: [pointInGrid, pointInGrid],
+          color,
+          lineWidth,
+          step: 1
+        }
+        renderDrawingGraphics()
+      } else if (drawingStep.value === 2 && drawingFirstPoint.value) {
+        // 第二步：确定第二个端点，画出第一条直线
+        drawingSecondPoint.value = pointInGrid
+        drawingStep.value = 3
+        activeDrawingData.value = {
+          type: tool,
+          points: [drawingFirstPoint.value, pointInGrid],
+          color,
+          lineWidth,
+          step: 2
+        }
+        renderDrawingGraphics()
+      } else if (drawingStep.value === 3 && drawingFirstPoint.value && drawingSecondPoint.value) {
+        // 第三步：确定平行线的位置，完成平行通道
+        const drawing = {
+          id: `drawing_${Date.now()}`,
+          type: tool,
+          points: [drawingFirstPoint.value, drawingSecondPoint.value, pointInGrid],
+          color,
+          lineWidth,
+          createdAt: Date.now()
+        }
+        drawingList.value.push(drawing)
+        // 清理临时状态，准备画下一个通道
+        drawingStep.value = 1
+        drawingFirstPoint.value = null
+        drawingSecondPoint.value = null
+        activeDrawingData.value = null
+        renderDrawingGraphics()
+      }
+    }
+    return
+  }
+
+  // 以下为区间统计的鼠标事件处理（画线工具未选中时执行）
+  // 记录mousedown时的屏幕坐标（用于检测拖拽阈值）
+  let screenX: number, screenY: number
+  if (e.zrX !== undefined && e.zrY !== undefined) {
+    screenX = e.zrX
+    screenY = e.zrY
+  } else if (e.offsetX !== undefined && e.offsetY !== undefined) {
+    screenX = e.offsetX
+    screenY = e.offsetY
+  } else if (e.event && e.event.clientX !== undefined) {
+    const rect = chartRef.value!.getBoundingClientRect()
+    screenX = e.event.clientX - rect.left
+    screenY = e.event.clientY - rect.top
+  } else {
+    return
+  }
+  mouseDownScreenX.value = screenX
+  mouseDownScreenY.value = screenY
+
+  const dataIndex = Math.round(pointInGrid.x)
+  const price = pointInGrid.y
+  if (dataIndex >= 0 && dataIndex < props.data.length) {
+    dragStartIndex.value = dataIndex
+    dragStartPrice.value = price
+    dragEndIndex.value = dataIndex
+    dragEndPrice.value = price
+    hasStartedDrag.value = false
+    lockCursorAt(dataIndex)
   }
 }
 
 /**
- * 处理图表鼠标移动事件（画线过程）.
+ * 处理图表鼠标移动事件.
+ * 所有画线工具的预览在组件内直接处理.
  */
-const handleChartMouseMove = (e: MouseEvent) => {
-  if (!drawingState.isDrawing.value || !drawingState.currentTool.value || !chartInstance) return
+const handleChartMouseMove = (e: any) => {
+  if (!chartInstance) return
 
-  // 更新光标位置（用于磁吸显示）
-  if (!drawingState.isCursorLocked.value) {
-    const pointInGrid = getMousePositionInGrid(e)
-    if (pointInGrid) {
-      lockedDataIndex.value = Math.floor(pointInGrid.x)
+  const pointInGrid = getMousePositionInGrid(e)
+  if (!pointInGrid) return
+
+  const tool = drawingState.currentTool.value
+
+  // 画线工具预览
+  if (tool) {
+    // 两步点击模式（line, rectangle, fibonacci）
+    if (tool === 'line' || tool === 'rectangle' || tool === 'fibonacci') {
+      if (drawingWaitingSecond.value && drawingFirstPoint.value && activeDrawingData.value) {
+        activeDrawingData.value.points = [drawingFirstPoint.value, pointInGrid]
+        renderDrawingGraphics()
+      }
+    }
+    // 平行通道三步点击模式
+    else if (tool === 'parallelChannel' && drawingFirstPoint.value && activeDrawingData.value) {
+      if (drawingStep.value === 2) {
+        // 第二步预览：显示第一条直线
+        activeDrawingData.value.points = [drawingFirstPoint.value, pointInGrid]
+      } else if (drawingStep.value === 3 && drawingSecondPoint.value) {
+        // 第三步预览：显示第一条直线和第二条平行线预览
+        activeDrawingData.value.points = [drawingFirstPoint.value, drawingSecondPoint.value, pointInGrid]
+      }
+      renderDrawingGraphics()
+    }
+    return
+  }
+
+  // 如果有mousedown记录（可能要拖拽）- 区间统计功能
+  if (mouseDownScreenX.value !== null && mouseDownScreenY.value !== null) {
+    // 获取当前屏幕坐标
+    let currentScreenX: number, currentScreenY: number
+    if (e.zrX !== undefined && e.zrY !== undefined) {
+      currentScreenX = e.zrX
+      currentScreenY = e.zrY
+    } else if (e.offsetX !== undefined && e.offsetY !== undefined) {
+      currentScreenX = e.offsetX
+      currentScreenY = e.offsetY
+    } else if (e.event && e.event.clientX !== undefined) {
+      const rect = chartRef.value!.getBoundingClientRect()
+      currentScreenX = e.event.clientX - rect.left
+      currentScreenY = e.event.clientY - rect.top
+    } else {
+      return
+    }
+
+    // 检测移动距离是否超过阈值
+    const moveDistance = Math.sqrt(
+      Math.pow(currentScreenX - mouseDownScreenX.value, 2) +
+      Math.pow(currentScreenY - mouseDownScreenY.value, 2)
+    )
+
+    if (moveDistance > DRAG_THRESHOLD) {
+      // 移动距离超过阈值，开始真正的拖拽
+      hasStartedDrag.value = true
+      isDragSelecting.value = true
+
+      // 更新结束点坐标
+      const dataIndex = Math.round(pointInGrid.x)
+      const price = pointInGrid.y
+      if (dataIndex >= 0 && dataIndex < props.data.length) {
+        dragEndIndex.value = dataIndex
+        dragEndPrice.value = price
+        // 十字线跟随移动
+        lockCursorAt(dataIndex)
+        // 实时渲染矩形框
+        renderDragRect()
+      }
     }
   }
 
-  const pointInGrid = getMousePositionInGrid(e)
-  if (pointInGrid) {
-    drawingState.onDrawing(pointInGrid)
-  }
+  // 边缘自动滚动处理
+  handleEdgeAutoScroll(e)
 }
 
 /**
- * 处理图表鼠标抬起事件（画线结束）.
+ * 处理图表鼠标抬起事件.
+ * 支持画线结束和拖拽框选结束.
+ * 对于点击-点击模式，不在此处理（由mousedown处理）.
+ * 画线工具栏开启时禁止拖拽框选.
  */
-const handleChartMouseUp = (e: MouseEvent) => {
-  if (!drawingState.isDrawing.value) return
+const handleChartMouseUp = (e: any) => {
+  const tool = drawingState.currentTool.value
 
-  const pointInGrid = getMousePositionInGrid(e)
-  drawingState.endDrawing(pointInGrid)
+  // 对于点击-点击模式的工具，mouseup不做处理（由mousedown处理）
+  if (tool === 'line' || tool === 'rectangle' || tool === 'fibonacci' || tool === 'parallelChannel') {
+    return
+  }
+
+  // 如果有mousedown记录 - 区间统计功能
+  if (mouseDownScreenX.value !== null) {
+    if (hasStartedDrag.value) {
+      // 真正的拖拽：结束并计算统计
+      endDragSelect()
+    } else {
+      // 单击：清除框选范围并关闭统计窗口
+      closeRangeStats()
+    }
+
+    // 清除mousedown记录
+    mouseDownScreenX.value = null
+    mouseDownScreenY.value = null
+    hasStartedDrag.value = false
+  }
+}
+
+// 边缘自动滚动定时器
+let edgeScrollTimer: number | null = null
+// 边缘阈值（距离边缘多少像素触发滚动）
+const EDGE_THRESHOLD = 50  // 50像素
+// 滚动间隔（毫秒）
+const SCROLL_INTERVAL = 100
+
+/**
+ * 处理边缘自动滚动.
+ * 当鼠标接近图表边缘时，自动滚动显示更多K线.
+ * 如果已到达数据边界，停止滚动，十字光标停留在最后一根有数据的K线上.
+ * 画线工具栏开启时禁止滚动.
+ */
+const handleEdgeAutoScroll = (e: any) => {
+  // 画线工具栏开启时禁止边缘滚动
+  if (showDrawingToolbar.value) return
+  if (!chartInstance || !chartRef.value || isDragSelecting.value || drawingState.isDrawing.value) return
+  if (!props.data || props.data.length === 0) return
+
+  // 获取鼠标屏幕坐标
+  let mouseX: number
+  if (e.zrX !== undefined) {
+    mouseX = e.zrX
+  } else if (e.offsetX !== undefined) {
+    mouseX = e.offsetX
+  } else if (e.event && e.event.clientX !== undefined) {
+    const rect = chartRef.value.getBoundingClientRect()
+    mouseX = e.event.clientX - rect.left
+  } else {
+    return
+  }
+
+  // 获取图表宽度
+  const chartWidth = chartRef.value.clientWidth
+
+  // 获取当前可见范围
+  const option = chartInstance.getOption() as any
+  const dataZoomOption = option?.dataZoom?.[0]
+  if (!dataZoomOption) return
+
+  const start = dataZoomOption.start ?? currentZoomRange.start
+  const end = dataZoomOption.end ?? currentZoomRange.end
+  const viewWidth = end - start
+
+  // 计算每次滚动的百分比（滚动1个K线）
+  const percentPerKline = 100 / props.data.length
+  const scrollAmount = percentPerKline * 1.5  // 每次滚动1.5个K线单位
+
+  // 判断是否接近边缘
+  const nearLeftEdge = mouseX < EDGE_THRESHOLD
+  const nearRightEdge = mouseX > chartWidth - EDGE_THRESHOLD
+
+  // 检查是否已到达数据边界
+  const atLeftBoundary = start <= 0.1  // 允许0.1%的误差
+  const atRightBoundary = end >= 99.9  // 允许0.1%的误差
+
+  // 清除之前的定时器
+  if (edgeScrollTimer) {
+    clearInterval(edgeScrollTimer)
+    edgeScrollTimer = null
+  }
+
+  // 只有在有更多数据可显示时才滚动
+  if (nearLeftEdge && !atLeftBoundary && start > 0) {
+    // 接近左边缘且有更早的数据，向左滚动
+    edgeScrollTimer = window.setInterval(() => {
+      if (!chartInstance) {
+        stopEdgeAutoScroll()
+        return
+      }
+      // 重新检查边界
+      const currentOption = chartInstance.getOption() as any
+      const currentStart = currentOption?.dataZoom?.[0]?.start ?? 0
+      if (currentStart <= 0.1) {
+        stopEdgeAutoScroll()
+        return
+      }
+      const newStart = Math.max(0, currentStart - scrollAmount)
+      const newEnd = newStart + viewWidth
+      chartInstance.dispatchAction({
+        type: 'dataZoom',
+        start: newStart,
+        end: newEnd
+      })
+      currentZoomRange.start = newStart
+      currentZoomRange.end = newEnd
+    }, SCROLL_INTERVAL)
+  } else if (nearRightEdge && !atRightBoundary && end < 100) {
+    // 接近右边缘且有更新的数据，向右滚动
+    edgeScrollTimer = window.setInterval(() => {
+      if (!chartInstance) {
+        stopEdgeAutoScroll()
+        return
+      }
+      // 重新检查边界
+      const currentOption = chartInstance.getOption() as any
+      const currentEnd = currentOption?.dataZoom?.[0]?.end ?? 100
+      if (currentEnd >= 99.9) {
+        stopEdgeAutoScroll()
+        return
+      }
+      const newEnd = Math.min(100, currentEnd + scrollAmount)
+      const newStart = newEnd - viewWidth
+      chartInstance.dispatchAction({
+        type: 'dataZoom',
+        start: newStart,
+        end: newEnd
+      })
+      currentZoomRange.start = newStart
+      currentZoomRange.end = newEnd
+    }, SCROLL_INTERVAL)
+  }
+  // 如果已到达边界且鼠标仍在边缘，不执行任何操作
+  // 十字光标会自然停留在最后一根有数据的K线上
+}
+
+/**
+ * 停止边缘自动滚动.
+ */
+const stopEdgeAutoScroll = () => {
+  if (edgeScrollTimer) {
+    clearInterval(edgeScrollTimer)
+    edgeScrollTimer = null
+  }
 }
 
 /**
  * 获取鼠标在图表网格中的位置.
+ * 支持DOM MouseEvent和zrender事件对象。
  */
-const getMousePositionInGrid = (e: MouseEvent): { x: number; y: number } | null => {
+const getMousePositionInGrid = (e: any): { x: number; y: number } | null => {
   if (!chartInstance || !chartRef.value) return null
 
-  const rect = chartRef.value.getBoundingClientRect()
-  const mouseX = e.clientX - rect.left
-  const mouseY = e.clientY - rect.top
+  // 尝试多种方式获取鼠标坐标
+  let mouseX: number, mouseY: number
 
-  // 使用ECharts的convertFromPixel方法转换坐标
-  const pointInGrid = chartInstance.convertFromPixel('grid', [mouseX, mouseY])
-  return { x: pointInGrid[0], y: pointInGrid[1] }
-}
-
-/**
- * 切换区间选择模式.
- */
-const toggleRangeSelect = () => {
-  isRangeSelectMode.value = !isRangeSelectMode.value
-  if (!isRangeSelectMode.value) {
-    clearRangeSelection()
-  }
-}
-
-/**
- * 清除区间选择.
- */
-const clearRangeSelection = () => {
-  selectedRange = null
-  rangeStatsData.value = null
-  if (chartInstance) {
-    chartInstance.dispatchAction({
-      type: 'brush',
-      areas: []
-    })
-  }
-}
-
-/**
- * 计算区间统计数据.
- */
-const calculateRangeStats = (startIndex: number, endIndex: number) => {
-  if (!props.data || startIndex < 0 || endIndex >= props.data.length) return null
-
-  const rangeData = props.data.slice(startIndex, endIndex + 1)
-  if (!rangeData.length) return null
-
-  const startItem = rangeData[0]
-  const endItem = rangeData[rangeData.length - 1]
-
-  const startPrice = parseFloat(startItem.close as string)
-  const endPrice = parseFloat(endItem.close as string)
-  const changeAmount = endPrice - startPrice
-  const changePercent = (changeAmount / startPrice * 100).toFixed(2)
-
-  const highs = rangeData.map(d => parseFloat(d.high as string) || 0)
-  const lows = rangeData.map(d => parseFloat(d.low as string) || 0)
-  const highPrice = Math.max(...highs)
-  const lowPrice = Math.min(...lows)
-  const amplitude = ((highPrice - lowPrice) / startPrice * 100).toFixed(2)
-
-  const closes = rangeData.map(d => parseFloat(d.close as string) || 0)
-  const avgPrice = (closes.reduce((a, b) => a + b, 0) / closes.length).toFixed(4)
-
-  // 基础统计数据
-  const stats = {
-    startDate: startItem.date,
-    endDate: endItem.date,
-    days: rangeData.length,
-    startPrice: startPrice.toFixed(marketConfig.value.pricePrecision),
-    endPrice: endPrice.toFixed(marketConfig.value.pricePrecision),
-    changeAmount: changeAmount.toFixed(marketConfig.value.pricePrecision),
-    changePercent: changePercent.startsWith('-') ? changePercent + '%' : '+' + changePercent + '%',
-    highPrice: highPrice.toFixed(marketConfig.value.pricePrecision),
-    lowPrice: lowPrice.toFixed(marketConfig.value.pricePrecision),
-    amplitude: amplitude + '%',
-    avgPrice: avgPrice
+  // zrender事件可能使用zrX/zrY或offsetX/offsetY
+  if (e.zrX !== undefined && e.zrY !== undefined) {
+    mouseX = e.zrX
+    mouseY = e.zrY
+  } else if (e.offsetX !== undefined && e.offsetY !== undefined) {
+    mouseX = e.offsetX
+    mouseY = e.offsetY
+  } else if (e.clientX !== undefined && e.clientY !== undefined) {
+    const rect = chartRef.value.getBoundingClientRect()
+    mouseX = e.clientX - rect.left
+    mouseY = e.clientY - rect.top
+  } else if (e.event && e.event.clientX !== undefined) {
+    // zrender包装的DOM事件
+    const rect = chartRef.value.getBoundingClientRect()
+    mouseX = e.event.clientX - rect.left
+    mouseY = e.event.clientY - rect.top
+  } else {
+    logger.warn('无法获取鼠标坐标', e)
+    return null
   }
 
-  // 涨跌停统计（仅股票市场）
-  if (hasLimitUpDown.value) {
-    const limitStats = calculateLimitUpDownStats(rangeData, limitThresholdType.value as MarketType)
-    return {
-      ...stats,
-      ...limitStats
-    }
+  // 使用ECharts的convertFromPixel方法转换坐标（主图gridIndex: 0）
+  try {
+    const pointInGrid = chartInstance.convertFromPixel({ gridIndex: 0 }, [mouseX, mouseY])
+    return { x: pointInGrid[0], y: pointInGrid[1] }
+  } catch (err) {
+    logger.warn('坐标转换失败', err)
+    return null
   }
-
-  return stats
 }
 
 /**
@@ -1467,17 +2333,6 @@ watch(() => props.maData, () => {
   nextTick(() => {
     renderChart(false)
   })
-}, { deep: true })
-
-// 监听markOptions变化，更新形态标记显示
-watch(markOptions, (options) => {
-  showGapMarks.value = options.includes('gap')
-  showLongShadowMarks.value = options.includes('shadow')
-  // 保存到localStorage
-  localStorage.setItem('fdas_gap_marks', showGapMarks.value.toString())
-  localStorage.setItem('fdas_shadow_marks', showLongShadowMarks.value.toString())
-  // 重新渲染图表
-  renderChart(false)
 }, { deep: true })
 
 // 监听主题变化
@@ -1546,13 +2401,25 @@ defineExpose({
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .chart-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--fdas-text-primary);
+}
+
+.symbol-name-tag {
+  font-size: 12px;
+  color: var(--fdas-text-muted);
+  padding: 2px 6px;
+  background: var(--fdas-gray-50);
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .symbol-name-tag {
+  background: var(--fdas-gray-700);
 }
 
 .current-price {
@@ -1585,12 +2452,18 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-left: 24px;
 }
 
 /* 图表区域 */
 .chart-area {
   flex: 1;
   min-height: 300px;
+}
+
+/* 画线模式时的笔形光标 */
+.chart-area.drawing-cursor {
+  cursor: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="%233B82F6"/></svg>') 0 24, crosshair;
 }
 
 /* 无数据提示 */
@@ -1600,78 +2473,6 @@ defineExpose({
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 10;
-}
-
-/* 光标锁定面板 */
-.cursor-lock-panel {
-  position: absolute;
-  top: 60px;
-  right: 12px;
-  background: var(--fdas-bg-card);
-  border: 1px solid var(--fdas-border-light);
-  border-radius: 8px;
-  padding: 12px;
-  min-width: 150px;
-  box-shadow: var(--fdas-shadow-card);
-  z-index: 20;
-}
-
-.lock-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.lock-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fdas-primary);
-}
-
-.lock-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.lock-data {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.lock-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.lock-label {
-  font-size: 12px;
-  color: var(--fdas-text-muted);
-}
-
-.lock-value {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--fdas-text-primary);
-}
-
-.lock-value.high {
-  color: #ef4444;
-}
-
-.lock-value.low {
-  color: #22c55e;
-}
-
-.lock-hint {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--fdas-border-light);
-  font-size: 11px;
-  color: var(--fdas-text-muted);
-  text-align: center;
 }
 
 /* 画线工具栏 */

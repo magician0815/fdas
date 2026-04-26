@@ -11,17 +11,6 @@
       </div>
     </div>
 
-    <!-- 主题切换 -->
-    <div class="theme-switch">
-      <el-switch
-        v-model="isDarkTheme"
-        size="small"
-        active-text="夜间"
-        inactive-text="白天"
-        @change="handleThemeChange"
-      />
-    </div>
-
     <!-- 主图区域 -->
     <div class="main-chart-section">
       <KLineChart
@@ -31,9 +20,14 @@
         :symbolName="symbolName"
         :symbolId="symbolId"
         :theme="currentTheme"
+        :volumeMaximized="volumeMaximized"
+        :macdMaximized="macdMaximized"
         @fetchData="$emit('fetchData')"
         @chartTypeChange="handleChartTypeChange"
         @maChange="handleMAChange"
+        @toggleVolume="toggleVolumeMaximize"
+        @toggleMacd="toggleMacdMaximize"
+        @adjustmentChange="(type) => $emit('adjustmentChange', type)"
       />
     </div>
 
@@ -46,19 +40,15 @@
           :data="chartData"
           :theme="currentTheme"
           :volData="volData"
+          :minimized="macdMaximized"
           @volChange="handleVOLChange"
         />
-        <!-- 副图控制按钮 -->
-        <div class="sub-chart-controls">
-          <el-button size="small" text @click="toggleVolumeMaximize">
-            <el-icon><FullScreen v-if="!volumeMaximized" /><aim v-else /></el-icon>
-          </el-button>
-        </div>
       </div>
 
       <!-- 可拖拽分隔线 -->
       <div
         class="chart-divider"
+        v-show="!volumeMaximized && !macdMaximized"
         @mousedown="startDragDivider"
       >
         <span class="divider-line"></span>
@@ -71,14 +61,9 @@
           :data="macdData"
           :dates="dates"
           :theme="currentTheme"
+          :minimized="volumeMaximized"
           @paramChange="handleMACDParamChange"
         />
-        <!-- 副图控制按钮 -->
-        <div class="sub-chart-controls">
-          <el-button size="small" text @click="toggleMacdMaximize">
-            <el-icon><FullScreen v-if="!macdMaximized" /><aim v-else /></el-icon>
-          </el-button>
-        </div>
       </div>
     </div>
   </div>
@@ -89,9 +74,11 @@
  * 专业行情图表面板组件.
  *
  * 组合K线主图、成交量副图、MACD副图，实现联动交互.
+ * 使用全局主题store管理主题切换.
  *
  * Author: FDAS Team
  * Created: 2026-04-14
+ * Updated: 2026-04-17 - 使用全局主题store，移除独立主题切换按钮
  */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { FullScreen, Aim } from '@element-plus/icons-vue'
@@ -99,6 +86,7 @@ import * as echarts from 'echarts'
 import KLineChart from './KLineChart.vue'
 import VolumeChart from './VolumeChart.vue'
 import MACDChart from './MACDChart.vue'
+import { useThemeStore } from '@/stores/theme'
 
 // Props定义
 interface Props {
@@ -141,10 +129,10 @@ const props = withDefaults(defineProps<Props>(), {
 // Emits定义
 const emit = defineEmits<{
   (e: 'fetchData'): void
-  (e: 'themeChange', theme: 'light' | 'dark'): void
   (e: 'chartTypeChange', type: 'candle' | 'line'): void
   (e: 'maChange', periods: string[]): void
   (e: 'macdParamChange', params: { fast: number; slow: number; signal: number }): void
+  (e: 'adjustmentChange', type: string): void
 }>()
 
 // 子组件refs
@@ -152,11 +140,9 @@ const klineChartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 const volumeChartRef = ref<InstanceType<typeof VolumeChart> | null>(null)
 const macdChartRef = ref<InstanceType<typeof MACDChart> | null>(null)
 
-// 主题状态 - 从localStorage恢复用户偏好
-const isDarkTheme = ref<boolean>(
-  localStorage.getItem('fdas_theme') === 'dark'
-)
-const currentTheme = computed<'light' | 'dark'>(() => isDarkTheme.value ? 'dark' : 'light')
+// 使用全局主题store
+const themeStore = useThemeStore()
+const currentTheme = computed<'light' | 'dark'>(() => themeStore.theme)
 const themeClass = computed(() => `theme-${currentTheme.value}`)
 
 // 图表类型
@@ -193,16 +179,6 @@ const volumeHeight = ref<number>(50)  // 成交量占比百分比
 const volumeMaximized = ref<boolean>(false)
 const macdMaximized = ref<boolean>(false)
 const isDragging = ref<boolean>(false)
-
-/**
- * 处理主题切换.
- */
-const handleThemeChange = (isDark: boolean) => {
-  // 保存主题设置到localStorage
-  localStorage.setItem('fdas_theme', isDark ? 'dark' : 'light')
-  emit('themeChange', isDark ? 'dark' : 'light')
-  // 子组件会通过watch自动响应主题变化
-}
 
 /**
  * 处理图表类型切换.
@@ -308,20 +284,22 @@ const stopDragDivider = () => {
 
 /**
  * 绑定图表联动.
+ * 使用echarts.connect实现主副图dataZoom同步.
  */
 const bindChartsLink = () => {
   const klineInstance = klineChartRef.value?.getChartInstance()
   const volumeInstance = volumeChartRef.value?.getChartInstance()
   const macdInstance = macdChartRef.value?.getChartInstance()
 
-  if (klineInstance && volumeInstance) {
-    klineInstance.group = 'pro-charts'
-    volumeInstance.group = 'pro-charts'
-    if (macdInstance) {
-      macdInstance.group = 'pro-charts'
-    }
-    echarts.connect('pro-charts')
-  }
+  if (!klineInstance) return
+
+  // 设置相同的group，实现联动
+  klineInstance.group = 'pro-charts'
+  if (volumeInstance) volumeInstance.group = 'pro-charts'
+  if (macdInstance) macdInstance.group = 'pro-charts'
+
+  // 连接所有图表
+  echarts.connect('pro-charts')
 }
 
 /**
@@ -333,11 +311,14 @@ const unbindChartsLink = () => {
 
 /**
  * Resize所有图表.
+ * 添加延迟确保DOM更新完成.
  */
 const resizeAll = () => {
-  klineChartRef.value?.resizeChart()
-  volumeChartRef.value?.resizeChart()
-  macdChartRef.value?.resizeChart()
+  nextTick(() => {
+    klineChartRef.value?.resizeChart()
+    volumeChartRef.value?.resizeChart()
+    macdChartRef.value?.resizeChart()
+  })
 }
 
 // 监听数据变化
@@ -468,14 +449,6 @@ defineExpose({
 
 .theme-dark {
   background: #1a1a2e;
-}
-
-/* 主题切换按钮 */
-.theme-switch {
-  position: absolute;
-  top: 8px;
-  right: 12px;
-  z-index: 10;
 }
 
 /* 主图区域 */

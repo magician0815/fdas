@@ -11,13 +11,14 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
-from datetime import date as DateType
+from datetime import date as DateType, date as date_cls, timedelta
 
 from app.core.database import get_db
 from app.models.user import User
 from app.services.stock_daily_service import stock_daily_service
 from app.schemas.stock_daily import StockDailyResponse, StockDailyListItem
 from app.schemas.common import Response
+from app.collectors.akshare_collector import AKShareCollector
 
 router = APIRouter(prefix="/stock/data", tags=["股票行情数据"])
 
@@ -118,3 +119,54 @@ async def get_stock_latest_date(
         success=True,
         data={"symbol_id": str(symbol_id), "latest_date": latest_date},
     )
+
+
+@router.get("/adjusted", response_model=Response)
+async def get_stock_adjusted_data(
+    symbol_code: str = Query(..., description="股票代码，如 sh600519"),
+    adjust: str = Query("", description="复权类型: ''=不复权, 'qfq'=前复权, 'hfq'=后复权"),
+    start_date: Optional[DateType] = Query(None, description="开始日期"),
+    end_date: Optional[DateType] = Query(None, description="结束日期"),
+    limit: int = Query(1000, ge=1, le=5000, description="返回数据条数限制"),
+):
+    """
+    获取股票复权日线行情数据（实时从AKShare获取，不经过数据库缓存）。
+
+    Args:
+        symbol_code: 股票代码（如 sh600519, sz000001）
+        adjust: 复权类型 (""=不复权, "qfq"=前复权, "hfq"=后复权)
+        start_date: 开始日期（默认最近一年）
+        end_date: 结束日期（默认今天）
+        limit: 数据条数限制
+
+    Returns:
+        股票日线数据列表
+    """
+    if not start_date:
+        start_date = date_cls.today() - timedelta(days=365)
+    if not end_date:
+        end_date = date_cls.today()
+
+    try:
+        collector = AKShareCollector(config={})
+        records = await collector.collect_stock_a_daily(
+            symbol_name=symbol_code,
+            symbol_code=symbol_code,
+            start_date=start_date,
+            end_date=end_date,
+            adjust=adjust,
+        )
+
+        # 应用limit
+        records = records[:limit]
+
+        return Response(
+            success=True,
+            data=records,
+            message=f"返回 {len(records)} 条数据 (adjust={adjust})",
+        )
+    except Exception as e:
+        return Response(
+            success=False,
+            message=f"获取复权数据失败: {str(e)}",
+        )

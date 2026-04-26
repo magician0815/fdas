@@ -834,14 +834,14 @@ CREATE TABLE IF NOT EXISTS bond_daily (
     high NUMERIC(18, 4),
     low NUMERIC(18, 4),
     close NUMERIC(18, 4),
-    yield NUMERIC(12, 6),
+    yield_rate NUMERIC(12, 6),
     volume BIGINT DEFAULT 0,
     amount NUMERIC(24, 2) DEFAULT 0,
     change_pct NUMERIC(12, 4),
     change_amount NUMERIC(18, 4),
     amplitude NUMERIC(12, 4),
-    duration NUMERIC(10, 4), COMMENT '久期',
-    convexity NUMERIC(10, 4), COMMENT '凸性',
+    duration NUMERIC(10, 4),
+    convexity NUMERIC(10, 4),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (symbol_id, date, id)
 ) PARTITION BY RANGE (date);
@@ -856,7 +856,7 @@ COMMENT ON COLUMN bond_daily.open IS '开盘价';
 COMMENT ON COLUMN bond_daily.high IS '最高价';
 COMMENT ON COLUMN bond_daily.low IS '最低价';
 COMMENT ON COLUMN bond_daily.close IS '收盘价';
-COMMENT ON COLUMN bond_daily.yield IS '收益率（百分比）';
+COMMENT ON COLUMN bond_daily.yield_rate IS '收益率（百分比）';
 COMMENT ON COLUMN bond_daily.volume IS '成交量';
 COMMENT ON COLUMN bond_daily.amount IS '成交额';
 COMMENT ON COLUMN bond_daily.change_pct IS '涨跌幅（百分比）';

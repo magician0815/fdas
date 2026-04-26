@@ -242,9 +242,9 @@ const fetchData = async () => {
 
   loading.value = true
   try {
-    // 获取期货行情数据
+    // 获取期货行情数据（传递品种ID而非合约ID）
     const dataRes = await getFuturesDailyData({
-      contract_id: selectedSymbolId.value,
+      variety_id: selectedSymbolId.value,
       limit: periodType.value === 'daily' ? 1000 : (periodType.value === 'weekly' ? 208 : 48)
     })
     if (dataRes.success) {
