@@ -2,10 +2,11 @@
 采集任务协调服务.
 
 负责协调采集任务的加载、执行和状态更新.
+支持全部7个市场: forex, stock_cn, stock_us, stock_hk, futures_cn, bond_cn, bond_us.
 
 Author: FDAS Team
 Created: 2026-04-10
-Updated: 2026-04-10 - 适配ForexDailyService和symbol_id
+Updated: 2026-04-29 - 多市场采集支持
 """
 
 from typing import Optional
@@ -21,12 +22,29 @@ from app.models.collection_task import CollectionTask
 from app.models.collection_task_log import CollectionTaskLog
 from app.models.datasource import DataSource
 from app.models.market import Market
-from app.models.forex_symbol import ForexSymbol
 from app.services.scheduler_service import scheduler_service
 from app.services.forex_daily_service import forex_daily_service
+from app.services.stock_daily_service import stock_daily_service
+from app.services.futures_daily_service import futures_daily_service
+from app.services.bond_daily_service import bond_daily_service
 from app.config.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+# 市场代码 → 服务映射
+MARKET_SERVICE_MAP = {
+    "forex": forex_daily_service,
+    "stock_cn": stock_daily_service,
+    "stock_us": stock_daily_service,
+    "stock_hk": stock_daily_service,
+    "futures_cn": futures_daily_service,
+    "bond_cn": bond_daily_service,
+    "bond_us": bond_daily_service,
+}
+
+# 支持的市场代码
+SUPPORTED_MARKETS = frozenset(MARKET_SERVICE_MAP.keys())
 
 
 class CollectionService:
@@ -35,7 +53,7 @@ class CollectionService:
 
     负责：
     1. 加载已启用的任务到调度器
-    2. 执行采集任务
+    2. 执行采集任务（多市场路由）
     3. 更新任务状态和日志
     """
 
@@ -86,7 +104,7 @@ class CollectionService:
 
     async def execute_task(self, task_id: UUID):
         """
-        执行采集任务（调度器回调函数）.
+        执行采集任务（调度器回调函数，支持多市场路由）.
 
         Args:
             task_id: 任务ID
@@ -114,10 +132,12 @@ class CollectionService:
                 logger.error(f"市场不存在: {task.market_id}")
                 return
 
-            # 目前只支持外汇市场
-            if market.code != "forex":
-                logger.error(f"暂不支持市场类型: {market.name}")
+            # 多市场路由
+            if market.code not in SUPPORTED_MARKETS:
+                logger.error(f"不支持的市场类型: {market.name} ({market.code})")
                 return
+
+            service = MARKET_SERVICE_MAP[market.code]
 
             # 创建执行日志
             log = CollectionTaskLog(
@@ -137,7 +157,7 @@ class CollectionService:
                 end_date = task.end_date or date.today()
 
                 # 检查最新数据日期，从最新日期继续采集
-                latest_date = await forex_daily_service.get_latest_date(db, task.symbol_id)
+                latest_date = await service.get_latest_date(db, task.symbol_id)
                 if latest_date and latest_date < end_date:
                     start_date = latest_date + timedelta(days=1)
 
@@ -155,15 +175,20 @@ class CollectionService:
                         except json.JSONDecodeError as e:
                             logger.warning(f"数据源配置JSON解析失败，使用默认: {e}")
 
-                # 执行采集
-                records_count = await forex_daily_service.collect_and_save(
-                    db=db,
-                    symbol_id=task.symbol_id,
-                    datasource_id=task.datasource_id,
-                    start_date=start_date,
-                    end_date=end_date,
-                    collector_config=collector_config,
-                )
+                # 执行采集（期货市场使用contract_id参数名）
+                collect_kwargs = {
+                    "db": db,
+                    "datasource_id": task.datasource_id,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "collector_config": collector_config,
+                }
+                if market.code == "futures_cn":
+                    collect_kwargs["contract_id"] = task.symbol_id
+                else:
+                    collect_kwargs["symbol_id"] = task.symbol_id
+
+                records_count = await service.collect_and_save(**collect_kwargs)
 
                 # 更新日志
                 duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
@@ -185,7 +210,7 @@ class CollectionService:
 
                 await db.commit()
 
-                logger.info(f"任务执行成功: {task.name}, 采集 {records_count} 条数据")
+                logger.info(f"任务执行成功: {task.name} ({market.name}), 采集 {records_count} 条数据")
 
             except Exception as e:
                 # 更新日志为失败
@@ -201,7 +226,7 @@ class CollectionService:
 
                 await db.commit()
 
-                logger.error(f"任务执行失败: {task.name}, 错误: {str(e)}")
+                logger.error(f"任务执行失败: {task.name} ({market.name}), 错误: {str(e)}")
 
     async def enable_task(self, task_id: UUID, db: AsyncSession) -> bool:
         """

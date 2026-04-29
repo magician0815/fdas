@@ -581,7 +581,9 @@ class AKShareCollector:
         adjust: str = "",
     ):
         """
-        调用AKShare stock_zh_a_daily接口获取A股数据。
+        调用AKShare stock_zh_a_daily (新浪源) 获取A股数据.
+
+        注意: stock_zh_a_hist (东方财富源) 易被屏蔽连接, 改用新浪源.
 
         Args:
             symbol_code: 股票代码（sh600519, sz000001等）
@@ -595,8 +597,7 @@ class AKShareCollector:
         import akshare as ak
         import pandas as pd
 
-        # 调用AKShare接口（使用stock_zh_a_hist支持复权）
-        df = ak.stock_zh_a_hist(
+        df = ak.stock_zh_a_daily(
             symbol=symbol_code,
             start_date=start_date.strftime("%Y%m%d"),
             end_date=end_date.strftime("%Y%m%d"),
@@ -608,6 +609,14 @@ class AKShareCollector:
 
         # 按日期排序
         df = df.sort_values("date")
+
+        # 计算涨跌幅和振幅 (新浪源不直接提供)
+        if "change_pct" not in df.columns and len(df) >= 2:
+            df["change_pct"] = df["close"].pct_change() * 100
+        if "change_amount" not in df.columns and len(df) >= 2:
+            df["change_amount"] = df["close"].diff()
+        if "amplitude" not in df.columns:
+            df["amplitude"] = (df["high"] - df["low"]) / df["close"].shift(1) * 100
 
         return df
 
@@ -627,11 +636,6 @@ class AKShareCollector:
 
         records = []
         for _, row in df.iterrows():
-            # 字段映射修正：
-            # - turnover (换手率) → turnover
-            # - pct_chg (涨跌幅) → change_pct
-            # - vol (成交量) → volume
-            # - amount (成交额) → amount
             record = {
                 "date": pd.to_datetime(row["date"]).strftime("%Y-%m-%d"),
                 "open": self._safe_float(row.get("open")),
@@ -640,9 +644,10 @@ class AKShareCollector:
                 "close": self._safe_float(row.get("close")),
                 "volume": int(self._safe_float(row.get("volume", 0)) or 0),
                 "amount": self._safe_float(row.get("amount")),
-                "turnover": self._safe_float(row.get("turnover")),  # 换手率
-                "change_pct": self._safe_float(row.get("pct_chg")),  # 涨跌幅
-                "change_amount": self._safe_float(row.get("change")) or self._safe_float(row.get("pct_chg")),
+                "turnover": self._safe_float(row.get("turnover")),
+                # 兼容 sina 源 (change_pct/change_amount/amplitude 在 _call 中计算) 和 eastmoney 源 (pct_chg/change)
+                "change_pct": self._safe_float(row.get("change_pct") or row.get("pct_chg")),
+                "change_amount": self._safe_float(row.get("change_amount") or row.get("change")),
                 "amplitude": self._safe_float(row.get("amplitude")),
             }
             records.append(record)
@@ -1060,22 +1065,16 @@ class AKShareCollector:
 
         try:
             if market == "us":
-                # 美股：东方财富美股历史数据
-                # symbol_code 格式: 105.MSFT (需要从spot接口获取实际代码)
                 df = await asyncio.to_thread(
-                    ak.stock_us_hist,
-                    symbol=symbol_code,
-                    start_date=start_date.strftime("%Y%m%d"),
-                    end_date=end_date.strftime("%Y%m%d"),
+                    ak.stock_us_daily,
+                    symbol=symbol_code.lower(),
                     adjust="",
                 )
             elif market == "hk":
-                # 港股：东方财富港股��史数据
                 df = await asyncio.to_thread(
                     ak.stock_hk_daily,
                     symbol=symbol_code,
-                    start_date=start_date.strftime("%Y%m%d"),
-                    end_date=end_date.strftime("%Y%m%d"),
+                    adjust="",
                 )
             else:
                 raise ValueError(f"不支持的股票市场: {market}")
@@ -1089,7 +1088,12 @@ class AKShareCollector:
             end_dt = pd.to_datetime(end_date)
             df = df[(df["date"] >= start_dt) & (df["date"] <= end_dt)]
 
-            # 转换格式
+            # 新浪源返回全量历史, 需要计算涨跌幅/振幅
+            df = df.sort_values("date")
+            df["change_pct"] = df["close"].pct_change() * 100
+            df["change_amount"] = df["close"].diff()
+            df["amplitude"] = (df["high"] - df["low"]) / df["close"].shift(1) * 100
+
             records = []
             for _, row in df.iterrows():
                 record = {
@@ -1100,8 +1104,8 @@ class AKShareCollector:
                     "close": self._safe_float(row.get("close")),
                     "volume": int(self._safe_float(row.get("volume", 0)) or 0),
                     "amount": self._safe_float(row.get("amount")),
-                    "change_pct": self._safe_float(row.get("pct_chg")),
-                    "change_amount": self._safe_float(row.get("change")),
+                    "change_pct": self._safe_float(row.get("change_pct")),
+                    "change_amount": self._safe_float(row.get("change_amount")),
                     "amplitude": self._safe_float(row.get("amplitude")),
                 }
                 records.append(record)
@@ -1163,12 +1167,12 @@ class AKShareCollector:
         try:
             if market == "cn":
                 # 国内债券：新浪财经沪深债券
-                # symbol_code 格式: sh010107 或 sz123456
+                # 自动添加交易所前缀
+                if not symbol_code.lower().startswith(("sh", "sz", "bj")):
+                    symbol_code = ("sh" if symbol_code.startswith("0") or symbol_code.startswith("1") else "sz") + symbol_code
                 df = await asyncio.to_thread(ak.bond_zh_hs_daily, symbol=symbol_code)
             elif market == "us":
                 # 美国国债：新浪财经美国国债收益率
-                # symbol_code 支持: 美国1年期国债, 美国2年期国债...美国30年期国债
-                # 默认为10年期
                 symbol = symbol_code if symbol_code else "美国10年期国债"
                 df = await asyncio.to_thread(ak.bond_gb_us_sina, symbol=symbol)
             else:
@@ -1183,7 +1187,14 @@ class AKShareCollector:
             end_dt = pd.to_datetime(end_date)
             df = df[(df["date"] >= start_dt) & (df["date"] <= end_dt)]
 
-            # 转换格式
+            if df.empty:
+                return []
+
+            # 新浪源不提供涨跌幅，需计算
+            df = df.sort_values("date")
+            df["change_pct"] = df["close"].pct_change() * 100
+            df["change_amount"] = df["close"].diff()
+
             records = []
             for _, row in df.iterrows():
                 record = {
@@ -1192,12 +1203,9 @@ class AKShareCollector:
                     "high": self._safe_float(row.get("high")),
                     "low": self._safe_float(row.get("low")),
                     "close": self._safe_float(row.get("close")),
-                    "yield_rate": self._safe_float(row.get("yield")),
                     "volume": int(self._safe_float(row.get("volume", 0)) or 0),
-                    "amount": self._safe_float(row.get("amount")),
-                    "change_pct": self._safe_float(row.get("pct_chg")),
-                    "change_amount": self._safe_float(row.get("change")),
-                    "amplitude": self._safe_float(row.get("amplitude")),
+                    "change_pct": self._safe_float(row.get("change_pct")),
+                    "change_amount": self._safe_float(row.get("change_amount")),
                 }
                 records.append(record)
 
@@ -1264,41 +1272,87 @@ class AKShareCollector:
         start_date: date,
         end_date: date,
     ):
-        """调用AKShare futures_zh_daily_sina接口获取期货数据."""
+        """
+        调用AKShare get_futures_daily 获取期货数据.
+
+        注意: futures_zh_daily_sina (新浪源) 在 akshare 1.18.55 不可用.
+        get_futures_daily 当前仅覆盖 CFFEX 金融期货 (IF/IC/IH/IM/T/TF/TL/TS).
+
+        Args:
+            symbol_code: 期货品种代码（如 IF, RB, M）
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            DataFrame: API返回的数据，若无数据返回空DataFrame
+        """
         import akshare as ak
         import pandas as pd
 
-        # 调用AKShare接口
-        df = ak.futures_zh_daily_sina(symbol=symbol_code)
+        # get_futures_daily 返回全市场期货日线（当前仅 CFFEX 可用）
+        df = ak.get_futures_daily(
+            start_date=start_date.strftime("%Y%m%d"),
+            end_date=end_date.strftime("%Y%m%d"),
+        )
 
-        # 过滤日期范围
-        df["date"] = pd.to_datetime(df["date"])
-        start_dt = pd.to_datetime(start_date)
-        end_dt = pd.to_datetime(end_date)
-        df = df[(df["date"] >= start_dt) & (df["date"] <= end_dt)]
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        # 按品种过滤
+        if "variety" in df.columns:
+            df = df[df["variety"] == symbol_code]
+        elif "symbol" in df.columns:
+            df = df[df["symbol"].str.startswith(symbol_code)]
+
+        if df.empty:
+            logger.warning(f"期货品种 {symbol_code} 在 {start_date}~{end_date} 无数据 "
+                          f"(get_futures_daily 当前仅覆盖 CFFEX 金融期货)")
 
         # 按日期排序
-        df = df.sort_values("date")
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.sort_values("date")
 
         return df
 
     def _transform_futures_data(self, df, symbol_code: str) -> List[Dict]:
-        """转换期货数据格式为数据库存储格式."""
+        """
+        转换期货数据格式为数据库存储格式.
+
+        兼容 get_futures_daily (CFFEX) 和 futures_zh_daily_sina (旧新浪源) 字段.
+        """
         import pandas as pd
 
         records = []
         for _, row in df.iterrows():
+            # 计算涨跌幅和振幅 (get_futures_daily 有 pre_settle 可用)
+            close_val = self._safe_float(row.get("close"))
+            pre_settle = self._safe_float(row.get("pre_settle"))
+            open_val = self._safe_float(row.get("open"))
+            high_val = self._safe_float(row.get("high"))
+            low_val = self._safe_float(row.get("low"))
+
+            change_pct = self._safe_float(row.get("pct_chg") or row.get("changepercent"))
+            if (change_pct is None or change_pct != change_pct) and pre_settle and close_val:
+                change_pct = (close_val - pre_settle) / pre_settle * 100
+
+            amplitude = self._safe_float(row.get("amplitude"))
+            if (amplitude is None or amplitude != amplitude) and pre_settle and open_val:
+                amplitude = (high_val - low_val) / pre_settle * 100
+
             record = {
                 "date": pd.to_datetime(row["date"]).strftime("%Y-%m-%d"),
-                "open": self._safe_float(row.get("open")),
-                "high": self._safe_float(row.get("high")),
-                "low": self._safe_float(row.get("low")),
-                "close": self._safe_float(row.get("close")),
+                "open": open_val,
+                "high": high_val,
+                "low": low_val,
+                "close": close_val,
                 "volume": int(self._safe_float(row.get("volume", 0)) or 0),
-                "amount": self._safe_float(row.get("amount")),
-                "change_pct": self._safe_float(row.get("pct_chg")),
-                "change_amount": self._safe_float(row.get("change")),
-                "amplitude": self._safe_float(row.get("amplitude")),
+                "amount": self._safe_float(row.get("amount") or row.get("turnover")),
+                "open_interest": self._safe_float(row.get("open_interest")),
+                "settle": self._safe_float(row.get("settle")),
+                "change_pct": change_pct,
+                "change_amount": self._safe_float(row.get("change_amount") or row.get("change")),
+                "amplitude": amplitude,
             }
             records.append(record)
 
@@ -1344,12 +1398,42 @@ class AKShareCollector:
             raise
 
     async def _fetch_stock_us_symbols(self) -> List[Dict]:
-        """获取美股标的列表（骨架）."""
-        raise NotImplementedError("美股标的获取接口尚未实现")
+        """获取美股标的列表."""
+        try:
+            import akshare as ak
+            df = await asyncio.to_thread(ak.get_us_stock_name)
+            records = []
+            for _, row in df.iterrows():
+                records.append({
+                    "code": str(row.get("code", "")).lower(),
+                    "name": str(row.get("name", "")),
+                    "exchange": "nasdaq",
+                    "market_code": "stock_us",
+                })
+            logger.info(f"获取美股标的列表成功，共 {len(records)} 条")
+            return records
+        except Exception as e:
+            logger.warning(f"获取美股标的列表失败，使用默认列表: {e}")
+            return self._get_default_us_symbols()
 
     async def _fetch_stock_hk_symbols(self) -> List[Dict]:
-        """获取港股标的列表（骨架）."""
-        raise NotImplementedError("港股标的获取接口尚未实现")
+        """获取港股标的列表."""
+        try:
+            import akshare as ak
+            df = await asyncio.to_thread(ak.stock_hk_spot)
+            records = []
+            for _, row in df.iterrows():
+                records.append({
+                    "code": str(row.get("code", "")),
+                    "name": str(row.get("name", "")),
+                    "exchange": "hkex",
+                    "market_code": "stock_hk",
+                })
+            logger.info(f"获取港股标的列表成功，共 {len(records)} 条")
+            return records
+        except Exception as e:
+            logger.warning(f"获取港股标的列表失败，使用默认列表: {e}")
+            return self._get_default_hk_symbols()
 
     async def _fetch_futures_symbols(self) -> List[Dict]:
         """获取国内期货标的列表."""
@@ -1431,9 +1515,50 @@ class AKShareCollector:
             logger.error(f"获取期货标的列表失败: {str(e)}")
             raise
 
+    def _get_default_us_symbols(self) -> List[Dict]:
+        """美股默认标的列表（API不可用时的回退）."""
+        symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B",
+                    "JPM", "V", "WMT", "JNJ", "MA", "PG", "XOM", "BAC", "DIS", "NFLX"]
+        return [{"code": s.lower(), "name": s, "exchange": "nasdaq", "market_code": "stock_us"} for s in symbols]
+
+    def _get_default_hk_symbols(self) -> List[Dict]:
+        """港股默认标的列表（API不可用时的回退）."""
+        symbols = [
+            ("00700", "腾讯控股"), ("09988", "阿里巴巴"), ("09999", "网易"),
+            ("00941", "中国移动"), ("02318", "中国平安"), ("03988", "中国银行"),
+            ("00005", "汇丰控股"), ("00388", "香港交易所"), ("01810", "小米集团"),
+            ("01024", "快手"), ("02015", "理想汽车"), ("09618", "京东集团"),
+        ]
+        return [{"code": c, "name": n, "exchange": "hkex", "market_code": "stock_hk"} for c, n in symbols]
+
+    def _get_default_bond_cn_symbols(self) -> List[Dict]:
+        """国内债券默认标的列表（API不可用时的回退）."""
+        symbols = [
+            ("sh019678", "22国债13"), ("sh019688", "22国债23"), ("sh019696", "23国债03"),
+            ("sh113044", "大秦转债"), ("sh110059", "浦发转债"), ("sh113011", "光大转债"),
+            ("sz127015", "希望转债"), ("sz128119", "龙净转债"),
+        ]
+        return [{"code": c, "name": n, "exchange": "sh" if c.startswith("sh") else "sz", "market_code": "bond_cn"} for c, n in symbols]
+
     async def _fetch_bond_cn_symbols(self) -> List[Dict]:
-        """获取国内债券标的列表（骨架）."""
-        raise NotImplementedError("国内债券标的获取接口尚未实现")
+        """获取国内债券标的列表."""
+        try:
+            import akshare as ak
+            df = await asyncio.to_thread(ak.bond_zh_hs_cov_spot)
+            records = []
+            for _, row in df.iterrows():
+                records.append({
+                    "code": str(row.get("code", "")),
+                    "name": str(row.get("name", "")),
+                    "exchange": "sh" if str(row.get("code", "")).startswith("1") else "sz",
+                    "market_code": "bond_cn",
+                })
+            if records:
+                logger.info(f"获取国内债券标的列表成功，共 {len(records)} 条")
+                return records
+        except Exception as e:
+            logger.warning(f"获取国内债券标的列表失败，使用默认列表: {e}")
+        return self._get_default_bond_cn_symbols()
 
     async def _fetch_bond_us_symbols(self) -> List[Dict]:
         """获取美债标的列表（美国国债收益率曲线）."""

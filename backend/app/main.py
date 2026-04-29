@@ -94,7 +94,7 @@ async def health_check():
     Returns:
         dict: 服务健康状态信息
     """
-    return {"status": "healthy", "version": "2.2.2"}
+    return {"status": "healthy", "version": "2.4.0"}
 
 
 # 注册API路由
