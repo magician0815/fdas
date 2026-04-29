@@ -22,5 +22,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-element-plus': ['element-plus'],
+          'vendor-echarts': ['echarts'],
+          'vendor-vue': ['vue', 'vue-router', 'pinia'],
+        },
+      },
+    },
   },
 })

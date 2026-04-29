@@ -156,13 +156,18 @@ const visible = computed({
 })
 
 // 监听显示状态，同步数据
-watch(visible, (val) => {
+watch(visible, (val, oldVal) => {
   if (val) {
     selectedMA.value = [...props.maPeriods]
     macdParams.value = { ...props.macdParams }
     selectedVOL.value = [...props.volPeriods]
     activeTab.value = 'ma'
     activePeriodIndex.value = 0
+  } else if (oldVal) {
+    // 对话框关闭时发送所有变更
+    emit('maChange', [...selectedMA.value])
+    emit('macdChange', { ...macdParams.value })
+    emit('volChange', [...selectedVOL.value])
   }
 })
 

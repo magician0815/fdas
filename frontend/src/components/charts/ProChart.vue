@@ -132,6 +132,7 @@ const emit = defineEmits<{
   (e: 'chartTypeChange', type: 'candle' | 'line'): void
   (e: 'maChange', periods: string[]): void
   (e: 'macdParamChange', params: { fast: number; slow: number; signal: number }): void
+  (e: 'volChange', periods: string[]): void
   (e: 'adjustmentChange', type: string): void
 }>()
 
@@ -200,7 +201,7 @@ const handleMAChange = (periods: string[]) => {
  * 处理成交量均线变化.
  */
 const handleVOLChange = (periods: string[]) => {
-  // 暂不处理
+  emit('volChange', periods)
 }
 
 /**

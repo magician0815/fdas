@@ -66,6 +66,7 @@
         :loading="loading"
         @fetchData="fetchData"
         @adjustmentChange="handleAdjustmentChange"
+        @volChange="handleVOLChange"
       />
     </div>
 
@@ -104,6 +105,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getStockDailyData, getStockAdjustedData } from '@/api/stock_data'
 import { getStockSymbols } from '@/api/stock_symbols'
+import { calculateAllIndicators } from '@/utils/indicators'
 import ProChart from '@/components/charts/ProChart.vue'
 import KeyboardWizard from '@/components/charts/KeyboardWizard.vue'
 import IndicatorWizard from '@/components/charts/IndicatorWizard.vue'
@@ -255,6 +257,7 @@ const fetchData = async () => {
     // 获取股票行情数据
     const dataRes = await getStockDailyData({
       symbol_id: selectedSymbolId.value,
+      period: periodType.value,
       limit: periodType.value === 'daily' ? 1000 : (periodType.value === 'weekly' ? 208 : 48)
     })
     if (dataRes.success) {
@@ -265,6 +268,7 @@ const fetchData = async () => {
         isST.value = latest.is_st || false
         isSuspended.value = latest.is_suspended || false
       }
+      recalculateIndicators()
     }
   } catch (e) {
     ElMessage.error('获取股票数据失败')
@@ -301,6 +305,7 @@ const handleAdjustmentChange = async (type: string) => {
 
     if (dataRes.success && dataRes.data) {
       chartData.value = dataRes.data
+      recalculateIndicators()
       ElMessage.success(`已切换到${type === 'forward' ? '前复权' : '后复权'}数据`)
     } else {
       ElMessage.warning(dataRes.message || '获取复权数据失败')
@@ -331,19 +336,33 @@ const handleKeydown = (e) => {
   }
 }
 
+// 重新计算技术指标
+const recalculateIndicators = () => {
+  if (!chartData.value.length) return
+  indicatorsData.value = calculateAllIndicators(
+    chartData.value,
+    maPeriods.value,
+    macdParams.value,
+    volPeriods.value
+  )
+}
+
 // 处理MA变化
 const handleMAChange = (periods: string[]) => {
   maPeriods.value = periods
+  recalculateIndicators()
 }
 
 // 处理MACD变化
 const handleMACDChange = (params: { fast: number; slow: number; signal: number }) => {
   macdParams.value = params
+  recalculateIndicators()
 }
 
 // 处理VOL变化
 const handleVOLChange = (periods: string[]) => {
   volPeriods.value = periods
+  recalculateIndicators()
 }
 
 onMounted(() => {

@@ -63,6 +63,9 @@
         :symbolId="selectedSymbolId"
         :loading="loading"
         @fetchData="fetchData"
+        @maChange="handleMAChange"
+        @macdParamChange="handleMACDChange"
+        @volChange="handleVOLChange"
       />
     </div>
 
@@ -309,22 +312,55 @@ const handleKeydown = (e) => {
   }
 }
 
-// 处理MA变化
-const handleMAChange = (periods: string[]) => {
+// 处理MA变化 - 重新从服务器获取指标
+const handleMAChange = async (periods: string[]) => {
   maPeriods.value = periods
-  // TODO: 重新获取指标数据或通知ProChart
+  if (!selectedSymbolId.value) return
+  try {
+    const indicatorsRes = await getIndicators({
+      symbol_id: selectedSymbolId.value,
+      period: periodType.value
+    })
+    if (indicatorsRes.success) {
+      indicatorsData.value = indicatorsRes.data || { ma: {}, macd: { dif: [], dea: [], macd: [] } }
+    }
+  } catch (e) {
+    // 静默失败，指标计算是辅助功能
+  }
 }
 
-// 处理MACD变化
-const handleMACDChange = (params: { fast: number; slow: number; signal: number }) => {
+// 处理MACD变化 - 重新从服务器获取指标
+const handleMACDChange = async (params: { fast: number; slow: number; signal: number }) => {
   macdParams.value = params
-  // TODO: 重新获取指标数据或通知ProChart
+  if (!selectedSymbolId.value) return
+  try {
+    const indicatorsRes = await getIndicators({
+      symbol_id: selectedSymbolId.value,
+      period: periodType.value
+    })
+    if (indicatorsRes.success) {
+      indicatorsData.value = indicatorsRes.data || { ma: {}, macd: { dif: [], dea: [], macd: [] } }
+    }
+  } catch (e) {
+    // 静默失败
+  }
 }
 
-// 处理VOL变化
-const handleVOLChange = (periods: string[]) => {
+// 处理VOL变化 - 重新从服务器获取指标
+const handleVOLChange = async (periods: string[]) => {
   volPeriods.value = periods
-  // TODO: 重新获取指标数据或通知ProChart
+  if (!selectedSymbolId.value) return
+  try {
+    const indicatorsRes = await getIndicators({
+      symbol_id: selectedSymbolId.value,
+      period: periodType.value
+    })
+    if (indicatorsRes.success) {
+      indicatorsData.value = indicatorsRes.data || { ma: {}, macd: { dif: [], dea: [], macd: [] } }
+    }
+  } catch (e) {
+    // 静默失败
+  }
 }
 
 onMounted(() => {

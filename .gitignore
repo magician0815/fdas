@@ -75,3 +75,7 @@ ehthumbs.db
 
 # Docker
 docker/*.log
+
+# 部署与备份（仅用于本地，不提交）
+backups/
+deployment-packages/

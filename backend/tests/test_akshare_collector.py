@@ -88,7 +88,7 @@ class TestFetchForexSymbols:
 
     def test_fetch_forex_symbols_api_exception(self, collector: AKShareCollector):
         """测试AKShare API异常，返回默认列表（覆盖行84-86）."""
-        # 通过修改 symbol_market_map 使其为空来模拟API异常
+        pytest.importorskip("akshare", reason="akshare未安装")
         import akshare.forex.forex_em as forex_em
         original_map = forex_em.symbol_market_map
 
@@ -272,3 +272,171 @@ class TestGetDefaultSymbols:
             assert "value" in symbol
             assert "code" in symbol
             assert "label" in symbol
+
+
+class TestGenerateSymbolName:
+    """测试货币对代码生成中文名称."""
+
+    def test_common_forex_pairs(self, collector: AKShareCollector):
+        assert collector._generate_symbol_name("USDCNY") == "美元人民币"
+        assert collector._generate_symbol_name("EURUSD") == "欧元美元"
+        assert collector._generate_symbol_name("GBPJPY") == "英镑日元"
+
+    def test_cnh_pair(self, collector: AKShareCollector):
+        assert collector._generate_symbol_name("USDCNH") == "美元离岸人民币"
+
+    def test_triple_char_codes(self, collector: AKShareCollector):
+        assert collector._generate_symbol_name("NZDUSD") == "新西兰元美元"
+        assert collector._generate_symbol_name("SGDUSD") == "新加坡元美元"
+        assert collector._generate_symbol_name("ZARUSD") == "南非兰特美元"
+
+    def test_fallback_to_code(self, collector: AKShareCollector):
+        # 未知货币代码应返回原始代码
+        assert collector._generate_symbol_name("XXXYYY") == "XXXYYY"
+
+
+class TestTransformStockData:
+    """测试股票数据格式转换."""
+
+    def test_transform_stock_basic(self, collector: AKShareCollector):
+        df = pd.DataFrame([{
+            "date": "2026-04-01",
+            "open": 10.0, "high": 11.0, "low": 9.5, "close": 10.5,
+            "volume": 1000000, "amount": 10500000.0,
+            "turnover": 2.5, "pct_chg": 5.0, "amplitude": 3.0,
+        }])
+        result = collector._transform_stock_data(df, "000001")
+        assert len(result) == 1
+        r = result[0]
+        assert r["open"] == 10.0
+        assert r["close"] == 10.5
+        assert r["volume"] == 1000000
+        assert r["turnover"] == 2.5
+        assert r["change_pct"] == 5.0
+
+    def test_transform_stock_empty(self, collector: AKShareCollector):
+        result = collector._transform_stock_data(pd.DataFrame(), "000001")
+        assert len(result) == 0
+
+    def test_transform_stock_missing_fields(self, collector: AKShareCollector):
+        df = pd.DataFrame([{"date": "2026-04-01", "close": 10.0}])
+        result = collector._transform_stock_data(df, "000001")
+        assert len(result) == 1
+        assert result[0]["open"] is None
+        assert result[0]["close"] == 10.0
+
+
+class TestTransformFuturesData:
+    """测试期货数据格式转换."""
+
+    def test_transform_futures_basic(self, collector: AKShareCollector):
+        df = pd.DataFrame([{
+            "date": "2026-04-01",
+            "open": 4000.0, "high": 4100.0, "low": 3950.0, "close": 4050.0,
+            "volume": 50000, "amount": 2.0e8, "pct_chg": 1.25, "change": 50.0,
+            "amplitude": 3.5,
+        }])
+        result = collector._transform_futures_data(df, "IF9999")
+        assert len(result) == 1
+        r = result[0]
+        assert r["open"] == 4000.0
+        assert r["close"] == 4050.0
+        assert r["volume"] == 50000
+        assert r["change_pct"] == 1.25
+
+    def test_transform_futures_empty(self, collector: AKShareCollector):
+        result = collector._transform_futures_data(pd.DataFrame(), "IF9999")
+        assert len(result) == 0
+
+
+class TestCollectDailyRouting:
+    """测试collect_daily统一入口分派."""
+
+    @pytest.mark.asyncio
+    async def test_http_api_with_empty_config(self, collector: AKShareCollector):
+        """http_api类型配置了空URL时应抛出请求异常."""
+        with pytest.raises(Exception):
+            await collector.collect_daily(
+                {"collector_type": "http_api", "api": {}, "data_parser": {}},
+                "test", date(2026, 4, 1), date(2026, 4, 15),
+            )
+
+    @pytest.mark.asyncio
+    async def test_http_api_with_mock(self, collector: AKShareCollector):
+        """http_api类型应对mock HTTP请求返回正确解析的数据."""
+        mock_resp = MagicMock()
+        mock_resp.headers = {"Content-Type": "application/json"}
+        mock_resp.json.return_value = {
+            "data": {
+                "klines": [
+                    ["20260401", "10.0", "10.5", "9.8", "10.2", "10000"],
+                    ["20260402", "10.2", "10.8", "10.1", "10.6", "12000"],
+                ]
+            }
+        }
+        mock_resp.raise_for_status.return_value = None
+
+        config = {
+            "collector_type": "http_api",
+            "api": {
+                "base_url": "https://api.example.com/stock/daily",
+                "method": "GET",
+                "timeout": 30,
+                "retry": {"max_attempt": 1, "backoff_factor": 0}
+            },
+            "data_parser": {
+                "response_root": "data.klines",
+                "date_field": 0,
+                "open_field": 1,
+                "high_field": 2,
+                "low_field": 3,
+                "close_field": 4,
+                "volume_field": 5,
+            },
+        }
+
+        with patch("requests.get", return_value=mock_resp):
+            records = await collector.collect_daily(
+                config, "000001",
+                date(2026, 4, 1), date(2026, 4, 15),
+            )
+
+        assert len(records) == 2
+        assert records[0]["date"] == "20260401"
+        assert records[0]["close"] == 10.2
+        assert records[0]["volume"] == 10000
+
+    @pytest.mark.asyncio
+    async def test_invalid_collector_type(self, collector: AKShareCollector):
+        with pytest.raises(ValueError, match="不支持"):
+            await collector.collect_daily(
+                {"collector_type": "invalid_type"},
+                "test", date(2026, 4, 1), date(2026, 4, 15),
+            )
+
+    @pytest.mark.asyncio
+    async def test_akshare_native_missing_interface(self, collector: AKShareCollector):
+        with patch.object(collector, '_collect_by_akshare_interface', side_effect=ValueError("不支持的AKShare接口:")):
+            with pytest.raises(ValueError, match="不支持"):
+                await collector.collect_daily(
+                    {"collector_type": "akshare_native"},
+                    "test", date(2026, 4, 1), date(2026, 4, 15),
+                )
+
+
+class TestFetchSymbolsByConfig:
+    """测试按配置获取标的数据."""
+
+    @pytest.mark.asyncio
+    async def test_collector_type_not_matched(self, collector: AKShareCollector):
+        result = await collector.fetch_symbols_by_config(
+            {"collector_type": "unknown_type"}
+        )
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_http_api_fallback(self, collector: AKShareCollector):
+        result = await collector.fetch_symbols_by_config(
+            {"collector_type": "http_api"}
+        )
+        assert result == []

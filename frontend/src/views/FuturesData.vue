@@ -66,6 +66,7 @@
         :showVolume="true"
         :showPosition="true"
         @fetchData="fetchData"
+        @volChange="handleVOLChange"
       />
     </div>
 
@@ -104,6 +105,7 @@ import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getFuturesDailyData } from '@/api/futures_data'
 import { getFuturesVarieties } from '@/api/futures_varieties'
+import { calculateAllIndicators } from '@/utils/indicators'
 import ProChart from '@/components/charts/ProChart.vue'
 import KeyboardWizard from '@/components/charts/KeyboardWizard.vue'
 import IndicatorWizard from '@/components/charts/IndicatorWizard.vue'
@@ -245,10 +247,12 @@ const fetchData = async () => {
     // 获取期货行情数据（传递品种ID而非合约ID）
     const dataRes = await getFuturesDailyData({
       variety_id: selectedSymbolId.value,
+      period: periodType.value,
       limit: periodType.value === 'daily' ? 1000 : (periodType.value === 'weekly' ? 208 : 48)
     })
     if (dataRes.success) {
       chartData.value = dataRes.data || []
+      recalculateIndicators()
     }
   } catch (e) {
     ElMessage.error('获取期货数据失败')
@@ -276,19 +280,33 @@ const handleKeydown = (e) => {
   }
 }
 
+// 重新计算技术指标
+const recalculateIndicators = () => {
+  if (!chartData.value.length) return
+  indicatorsData.value = calculateAllIndicators(
+    chartData.value,
+    maPeriods.value,
+    macdParams.value,
+    volPeriods.value
+  )
+}
+
 // 处理MA变化
 const handleMAChange = (periods: string[]) => {
   maPeriods.value = periods
+  recalculateIndicators()
 }
 
 // 处理MACD变化
 const handleMACDChange = (params: { fast: number; slow: number; signal: number }) => {
   macdParams.value = params
+  recalculateIndicators()
 }
 
 // 处理VOL变化
 const handleVOLChange = (periods: string[]) => {
   volPeriods.value = periods
+  recalculateIndicators()
 }
 
 onMounted(() => {

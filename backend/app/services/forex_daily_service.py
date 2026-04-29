@@ -78,13 +78,22 @@ class ForexDailyService:
         else:
             collector = AKShareCollector()
 
-        # 采集数据
-        records = await collector.collect_forex_hist(
-            symbol_name=symbol.name,
-            symbol_code=symbol.code,
-            start_date=start_date,
-            end_date=end_date,
-        )
+        # 采集数据 - 通过collect_daily()路由支持http_api和akshare_native
+        collector_type = (collector_config or {}).get("collector_type", "akshare_native")
+        if collector_type == "http_api":
+            records = await collector.collect_daily(
+                config=collector_config or {},
+                symbol=symbol.code,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        else:
+            records = await collector.collect_forex_hist(
+                symbol_name=symbol.name,
+                symbol_code=symbol.code,
+                start_date=start_date,
+                end_date=end_date,
+            )
 
         if not records:
             logger.warning(f"采集数据为空，跳过保存")

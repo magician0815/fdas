@@ -673,12 +673,260 @@ class AKShareCollector:
         collector_type = config.get("collector_type", "akshare_native")
 
         if collector_type == "http_api":
-            # TODO: 实现HTTP API采集（后续阶段）
-            raise NotImplementedError("HTTP API采集器尚未实现")
+            return await self._collect_by_http_api(config, symbol, start_date, end_date)
         elif collector_type == "akshare_native":
             return await self._collect_by_akshare_interface(config, symbol, start_date, end_date)
         else:
             raise ValueError(f"不支持的采集器类型: {collector_type}")
+
+    async def _collect_by_http_api(
+        self,
+        config: Dict,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+    ) -> List[Dict]:
+        """
+        通过HTTP API采集数据.
+
+        支持JSON响应和CSV响应两种格式.
+        使用配置中的api、data_parser、symbol_mapping字段.
+
+        Args:
+            config: 数据源配置字典
+            symbol: 标的代码/名称
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            List[Dict]: 统一格式的数据记录列表
+        """
+        import requests
+
+        api_config = config.get("api", {})
+        base_url = api_config.get("base_url", "")
+        method = api_config.get("method", "GET").upper()
+        timeout = api_config.get("timeout", 30)
+        retry_cfg = api_config.get("retry", {"max_attempt": 3, "backoff_factor": 2})
+
+        headers = config.get("headers", {})
+        params = dict(config.get("params", {}))
+        symbol_mapping = config.get("symbol_mapping", {})
+        parser_cfg = config.get("data_parser", {})
+
+        # 应用标的映射
+        api_symbol = symbol_mapping.get(symbol, symbol)
+
+        # 注入请求参数中的动态值
+        for key, val in params.items():
+            if isinstance(val, str):
+                val = val.replace("{symbol}", str(api_symbol))
+                val = val.replace("{start_date}", start_date.strftime("%Y%m%d"))
+                val = val.replace("{end_date}", end_date.strftime("%Y%m%d"))
+                params[key] = val
+
+        # 带重试的HTTP请求
+        max_attempts = retry_cfg.get("max_attempt", 3)
+        backoff_factor = retry_cfg.get("backoff_factor", 2)
+        last_error = None
+
+        for attempt in range(max_attempts):
+            try:
+                if method == "GET":
+                    resp = requests.get(base_url, params=params, headers=headers, timeout=timeout)
+                else:
+                    resp = requests.post(base_url, json=params, headers=headers, timeout=timeout)
+                resp.raise_for_status()
+                break
+            except requests.exceptions.RequestException as e:
+                last_error = e
+                if attempt < max_attempts - 1:
+                    import time
+                    time.sleep(backoff_factor ** attempt)
+        else:
+            raise last_error
+
+        # 解析响应
+        content_type = resp.headers.get("Content-Type", "")
+        if "json" in content_type or base_url.endswith("json"):
+            raw_data = self._parse_json_response(resp.json(), parser_cfg)
+        else:
+            raw_data = self._parse_text_response(resp.text, parser_cfg)
+
+        if not raw_data:
+            logger.warning(f"HTTP API未返回数据: {base_url}")
+            return []
+
+        # 转换为统一格式
+        records = []
+        for row in raw_data:
+            record = {
+                "date": row.get("date"),
+                "open": self._safe_float(row.get("open")),
+                "high": self._safe_float(row.get("high")),
+                "low": self._safe_float(row.get("low")),
+                "close": self._safe_float(row.get("close")),
+                "volume": int(self._safe_float(row.get("volume", 0)) or 0),
+                "change_pct": self._safe_float(row.get("change_pct")),
+                "change_amount": self._safe_float(row.get("change_amount")),
+                "amplitude": self._safe_float(row.get("amplitude")),
+            }
+            records.append(record)
+
+        logger.info(f"HTTP API采集完成: {len(records)} 条记录")
+        return records
+
+    def _parse_json_response(self, data: any, parser_cfg: Dict) -> List[Dict]:
+        """
+        解析JSON响应，支持嵌套路径导航.
+
+        Args:
+            data: JSON响应数据
+            parser_cfg: 解析器配置
+
+        Returns:
+            List[Dict]: 解析后的数据列表
+        """
+        response_root = parser_cfg.get("response_root", "")
+
+        # 按点分隔的路径导航（如 "data.klines"）
+        if response_root:
+            for key in response_root.split("."):
+                key = key.strip()
+                if not key:
+                    continue
+                if isinstance(data, dict):
+                    data = data.get(key)
+                elif isinstance(data, list) and key.isdigit():
+                    data = data[int(key)]
+                if data is None:
+                    return []
+            # When the path is something like "data.klines", the result might be
+            # a list of comma-separated strings, or a list of objects.
+            # Only return here if it's already a list.
+            if isinstance(data, list):
+                rows = data
+            elif isinstance(data, dict):
+                # Wrapped in another dict -- try to find a list
+                data_list_key = parser_cfg.get("data_list_key", "")
+                if data_list_key:
+                    rows = data.get(data_list_key, [])
+                else:
+                    rows = list(data.values())[0] if data else []
+            else:
+                rows = []
+        else:
+            if isinstance(data, list):
+                rows = data
+            elif isinstance(data, dict):
+                data_list_key = parser_cfg.get("data_list_key", "")
+                if data_list_key:
+                    rows = data.get(data_list_key, [])
+                else:
+                    # Try common keys
+                    for candidate in ("data", "rows", "records", "items"):
+                        if candidate in data:
+                            rows = data[candidate]
+                            break
+                    else:
+                        rows = list(data.values())[0] if data else []
+            else:
+                rows = []
+
+        # 解析每一行
+        parsed = []
+        date_idx = parser_cfg.get("date_field", 0)
+        open_idx = parser_cfg.get("open_field", 1)
+        high_idx = parser_cfg.get("high_field", 2)
+        low_idx = parser_cfg.get("low_field", 3)
+        close_idx = parser_cfg.get("close_field", 4)
+        volume_idx = parser_cfg.get("volume_field", 5)
+        change_pct_idx = parser_cfg.get("change_pct_field", -1)
+        amplitude_idx = parser_cfg.get("amplitude_field", -1)
+
+        for row in rows:
+            if isinstance(row, str):
+                # CSV行
+                fields = row.split(",")
+                if len(fields) <= max(date_idx, open_idx, high_idx, low_idx, close_idx):
+                    continue
+                parsed.append({
+                    "date": fields[date_idx].strip(),
+                    "open": fields[open_idx].strip(),
+                    "high": fields[high_idx].strip(),
+                    "low": fields[low_idx].strip(),
+                    "close": fields[close_idx].strip(),
+                    "volume": fields[volume_idx].strip() if len(fields) > volume_idx else "0",
+                    "change_pct": fields[change_pct_idx].strip() if change_pct_idx >= 0 and len(fields) > change_pct_idx else "",
+                    "amplitude": fields[amplitude_idx].strip() if amplitude_idx >= 0 and len(fields) > amplitude_idx else "",
+                })
+            elif isinstance(row, dict):
+                # JSON对象 - 按索引或键名提取
+                def _get_field(data, idx, default=""):
+                    if isinstance(data, dict):
+                        # 优先用索引对应的键名查找
+                        key_map = {
+                            0: "date", 1: "open", 2: "high", 3: "low",
+                            4: "close", 5: "volume", 6: "change_pct",
+                            7: "change_amount", 8: "amplitude"
+                        }
+                        key = key_map.get(idx, "")
+                        if key and key in data:
+                            return data[key]
+                        # 回退到值列表
+                        values = list(data.values())
+                        if idx < len(values):
+                            return values[idx]
+                    return default
+
+                parsed.append({
+                    "date": _get_field(row, date_idx),
+                    "open": _get_field(row, open_idx),
+                    "high": _get_field(row, high_idx),
+                    "low": _get_field(row, low_idx),
+                    "close": _get_field(row, close_idx),
+                    "volume": _get_field(row, volume_idx, "0"),
+                    "change_pct": _get_field(row, change_pct_idx),
+                    "change_amount": _get_field(row, 7),
+                    "amplitude": _get_field(row, amplitude_idx),
+                })
+            elif isinstance(row, list):
+                # JSON数组行 - 按索引提取
+                def _safe_idx(lst, idx, default=""):
+                    if idx >= 0 and idx < len(lst):
+                        return lst[idx]
+                    return default
+
+                parsed.append({
+                    "date": _safe_idx(row, date_idx),
+                    "open": _safe_idx(row, open_idx),
+                    "high": _safe_idx(row, high_idx),
+                    "low": _safe_idx(row, low_idx),
+                    "close": _safe_idx(row, close_idx),
+                    "volume": _safe_idx(row, volume_idx, "0"),
+                    "change_pct": _safe_idx(row, change_pct_idx),
+                    "amplitude": _safe_idx(row, amplitude_idx),
+                })
+
+        return parsed
+
+    def _parse_text_response(self, text: str, parser_cfg: Dict) -> List[Dict]:
+        """
+        解析纯文本/CSV响应.
+
+        Args:
+            text: 响应文本
+            parser_cfg: 解析器配置
+
+        Returns:
+            List[Dict]: 解析后的数据列表
+        """
+        lines = text.strip().split("\n")
+        # 跳过表头行（如果配置了）
+        skip_rows = parser_cfg.get("skip_rows", 0)
+        lines = lines[skip_rows:]
+
+        return self._parse_json_response(lines, parser_cfg)
 
     async def _collect_by_akshare_interface(
         self,
