@@ -1,0 +1,1 @@
+import{L as a}from"./index-CuJdmUat.js";function e(){return a.get("/api/v1/datasources/")}function r(t){return a.post(`/api/v1/datasources/${t}/sync-to-database`)}function o(){return a.get("/api/v1/markets/")}export{e as a,o as g,r as s};

@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import { createPinia } from 'pinia'
+
+const pinia = createPinia()
 
 export default defineConfig({
   plugins: [vue()],
@@ -11,6 +14,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
     },
+    setupFiles: ['./src/test/setup.ts'],
   },
   resolve: {
     alias: {

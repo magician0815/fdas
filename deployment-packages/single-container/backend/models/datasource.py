@@ -1,0 +1,59 @@
+"""
+数据源模型.
+
+定义datasources表的SQLAlchemy模型类.
+
+Author: FDAS Team
+Created: 2026-04-03
+Updated: 2026-04-10 - 新增market_id字段，添加字段注释
+Updated: 2026-04-21 - 新增config_file字段存储配置文件
+"""
+
+from sqlalchemy import Column, String, DateTime, Boolean, Date, Text, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from datetime import datetime, timezone
+import uuid
+
+from app.core.database import Base
+
+
+class DataSource(Base):
+    """
+    数据源模型.
+
+    存储数据源配置信息.
+
+    Attributes:
+        id: 数据源ID（UUID）
+        name: 数据源名称（唯一）
+        market_id: 适用市场类型ID
+        interface: AKShare接口名称（如forex_hist）
+        description: 数据源描述
+        config_schema: 配置参数Schema（JSON）
+        config_file: 配置文件内容（JSON格式字符串）
+        config_version: 配置版本号
+        config_updated_at: 配置更新时间
+        supported_symbols: 支持的货币对列表（JSON）
+        min_date: 接口最早可用数据日期
+        type: 数据源类型（默认akshare）
+        is_active: 是否启用
+        created_at: 创建时间
+        updated_at: 更新时间
+    """
+    __tablename__ = "datasources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="数据源唯一标识ID")
+    name = Column(String(100), nullable=False, unique=True, comment="数据源名称")
+    market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), index=True, comment="适用市场类型ID")
+    interface = Column(String(50), nullable=False, comment="AKShare接口名称")
+    description = Column(Text, comment="数据源描述说明")
+    config_schema = Column(JSONB, nullable=False, comment="配置参数Schema")
+    config_file = Column(Text, nullable=True, comment="数据源配置文件(JSON格式)")
+    config_version = Column(String(20), nullable=True, comment="配置版本号")
+    config_updated_at = Column(DateTime(timezone=True), nullable=True, comment="配置更新时间")
+    supported_symbols = Column(JSONB, comment="支持的货币对列表")
+    min_date = Column(Date, comment="接口最早可用数据日期")
+    type = Column(String(50), nullable=False, default="akshare", comment="数据源类型")
+    is_active = Column(Boolean, default=True, comment="是否启用")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")

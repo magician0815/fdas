@@ -46,6 +46,9 @@ def mock_datasource():
     ds.min_date = date(2020, 1, 1)
     ds.type = "akshare"
     ds.is_active = True
+    ds.config_file = None
+    ds.config_version = None
+    ds.config_updated_at = None
     ds.created_at = date(2020, 1, 1)
     ds.updated_at = date(2020, 1, 1)
     return ds

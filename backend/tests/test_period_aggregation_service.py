@@ -627,8 +627,8 @@ class TestPeriodAggregationService:
             ma_periods=[5],  # Need 5 data points but only have 1
             macd_params={"fast": 12, "slow": 26, "signal": 9}
         )
-        # Should have empty MA values due to insufficient points
-        assert result["ma"]["ma5"] == []
+        # 数据不足时返回与输入长度一致的None数组
+        assert result["ma"]["ma5"] == [{"value": None}]
 
     def test_aggregate_with_indicators_custom_ma_periods(self):
         """Test aggregate_with_indicators with custom MA periods."""
@@ -852,7 +852,7 @@ class TestAggregateAndCalculateIndicators:
             macd_params={"fast": 12, "slow": 26, "signal": 9}  # 默认参数
         )
 
-        # 数据不足35条，返回空MACD
-        assert result["macd"]["dif"] == []
-        assert result["macd"]["dea"] == []
-        assert result["macd"]["macd"] == []
+        # 数据不足时返回与输入长度一致的None数组
+        assert result["macd"]["dif"] == [None, None]
+        assert result["macd"]["dea"] == [None, None]
+        assert result["macd"]["macd"] == [None, None]

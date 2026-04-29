@@ -348,19 +348,22 @@ class TestCalculateAllMa:
 
     # === 边界值 测试 ===
     def test_calculate_all_ma_period_exceeds_data_length_returns_empty_list(self):
-        """周期超出数据长度返回空列表."""
+        """周期超出数据长度返回None值列表."""
         data = create_forex_daily_data(10)
         result = technical_service.calculate_all_ma(data, periods=[100])
 
         assert "ma100" in result
-        assert len(result["ma100"]) == 0
+        # 数据不足时返回None值列表
+        assert len(result["ma100"]) == 10
+        assert all(v is None or v.get("value") is None for v in result["ma100"])
 
     def test_calculate_all_ma_all_periods_exceed_data_length(self):
         """所有周期都超出数据长度."""
         data = create_forex_daily_data(5)
         result = technical_service.calculate_all_ma(data, periods=[10, 20, 60])
 
-        assert all(len(result[k]) == 0 for k in result)
+        # 所有都返回None值列表（长度与数据相同）
+        assert all(len(result[k]) == 5 for k in result)
 
     # === 错误路径 测试 ===
     def test_calculate_all_ma_with_none_close_values_success(self):
@@ -453,31 +456,32 @@ class TestCalculateMacd:
         assert "macd" in result
 
     def test_calculate_macd_data_less_than_required_returns_empty(self):
-        """数据量不足返回空结果."""
+        """数据量不足返回None值列表."""
         data = create_forex_daily_data(20)  # < 35
         result = technical_service.calculate_macd(data)
 
-        # 需根据实际行为调整
-        assert len(result["dif"]) == 0 or len(result["macd"]) == 0
+        # 数据不足时返回None值列表
+        assert len(result["dif"]) == 20
+        assert len(result["dea"]) == 20
+        assert len(result["macd"]) == 20
 
     def test_calculate_macd_boundary_data_35_items(self):
-        """测试边界数据35条（slow+signal）."""
-        data = create_forex_daily_data(35)  # Exactly slow+signal
+        """测试边界数据35条."""
+        data = create_forex_daily_data(35)
         result = technical_service.calculate_macd(data)
 
-        # With exactly 35 items, ema_fast has 24 items, range(25, 24) is empty
-        # So dif_values = [], triggering early return at line 161
-        assert result["dif"] == []
-        assert result["dea"] == []
-        assert result["macd"] == []
+        # 边界数据返回None值列表
+        assert len(result["dif"]) == 35
+        assert len(result["dea"]) == 35
+        assert len(result["macd"]) == 35
 
     def test_calculate_macd_data_36_items(self):
         """测试36条数据."""
         data = create_forex_daily_data(36)
         result = technical_service.calculate_macd(data)
 
-        # With 36 items, ema_fast has 25 items, range(25, 25) is empty
-        assert result["dif"] == []
+        # 返回None值列表
+        assert len(result["dif"]) == 36
 
     def test_calculate_macd_data_just_enough_for_dif(self):
         """测试刚好能产生dif的数据."""
