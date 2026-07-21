@@ -44,3 +44,15 @@ export function getFuturesLatestData(contractId) {
 export function getFuturesLatestDate(contractId) {
   return request.get(`/api/v1/futures/data/${contractId}/latest-date`)
 }
+
+/** 搜索期货品种 */
+export function searchSymbols(query) {
+  return request.get('/api/v1/futures-varieties/', { params: { search: query, limit: 20 } })
+}
+
+/** 获取期货K线图表数据 */
+export function getChartData(symbolId, period = 'daily') {
+  return request.get('/api/v1/futures/data/', { params: { symbol_id: symbolId, period } })
+}
+
+export default { searchSymbols, getChartData, getFuturesDailyData, getFuturesLatestData, getFuturesLatestDate }

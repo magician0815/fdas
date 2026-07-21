@@ -25,17 +25,10 @@ import {
   calculateBackwardAdjustedPrice,
   calculateAdjustmentFactor,
   calculateAdjustedPrices,
-  generateDividendMarkPoints,
-  generateDividendMarkLines,
   detectSuspensionPeriods,
-  generateSuspensionMarkAreas,
-  FuturesMarketType,
   calculateDaysToExpiry,
   isContractNearExpiry,
   isContractExpired,
-  generateExpiryMarkPoints,
-  generateExpiryMarkLines,
-  generateMainSwitchMarkPoints,
   formatOpenInterest,
   calculateOIChangeRate,
   isOIAbnormalChange
@@ -416,56 +409,6 @@ describe('StockUtils 股票市场工具', () => {
     })
   })
 
-  describe('除权除息标记', () => {
-    describe('generateDividendMarkPoints', () => {
-      it('应正确生成除权除息标记点', () => {
-        const events = [{
-          eventDate: '2026-01-02',
-          eventType: 'dividend',
-          adjustmentFactor: 0.95
-        }]
-        const rawData = [
-          { date: '2026-01-01', high: 10.5 },
-          { date: '2026-01-02', high: 11 }
-        ]
-        const result = generateDividendMarkPoints(events, 'light', rawData)
-        expect(result).not.toBeNull()
-        expect(result.data).toHaveLength(1)
-        expect(result.data[0].symbol).toBe('pin')
-      })
-
-      it('空事件应返回null', () => {
-        expect(generateDividendMarkPoints(null, 'light', [])).toBeNull()
-        expect(generateDividendMarkPoints([], 'light', [])).toBeNull()
-      })
-
-      it('找不到对应日期应返回null', () => {
-        const events = [{ eventDate: '2026-01-05', eventType: 'dividend', adjustmentFactor: 0.95 }]
-        const rawData = [{ date: '2026-01-01', high: 10.5 }]
-        const result = generateDividendMarkPoints(events, 'light', rawData)
-        expect(result).toBeNull()
-      })
-    })
-
-    describe('generateDividendMarkLines', () => {
-      it('应正确生成除权除息标记线', () => {
-        const events = [{ eventDate: '2026-01-02', eventType: 'bonus', adjustmentFactor: 0.9 }]
-        const rawData = [
-          { date: '2026-01-01', high: 10.5, low: 9.5 },
-          { date: '2026-01-02', high: 11, low: 10 }
-        ]
-        const result = generateDividendMarkLines(events, rawData, 'light')
-        expect(result).not.toBeNull()
-        expect(result.symbol).toBe('none')
-      })
-
-      it('空事件应返回null', () => {
-        expect(generateDividendMarkLines(null, [], 'light')).toBeNull()
-        expect(generateDividendMarkLines([], [], 'light')).toBeNull()
-      })
-    })
-  })
-
   describe('停牌检测', () => {
     describe('detectSuspensionPeriods', () => {
       it('应检测超过7天的间隔', () => {
@@ -494,41 +437,10 @@ describe('StockUtils 股票市场工具', () => {
       })
     })
 
-    describe('generateSuspensionMarkAreas', () => {
-      it('应正确生成停牌标记区域', () => {
-        const suspensions = [{
-          startDate: '2026-01-01',
-          endDate: '2026-01-15',
-          days: 14,
-          startIndex: 0,
-          endIndex: 1
-        }]
-        const rawData = [
-          { date: '2026-01-01', high: 10.5, low: 9.5 },
-          { date: '2026-01-15', high: 11, low: 10 }
-        ]
-        const result = generateSuspensionMarkAreas(suspensions, rawData, 'light')
-        expect(result).not.toBeNull()
-        expect(result.data).toHaveLength(1)
-      })
-
-      it('空停牌数组应返回null', () => {
-        expect(generateSuspensionMarkAreas(null, [], 'light')).toBeNull()
-        expect(generateSuspensionMarkAreas([], [], 'light')).toBeNull()
-      })
-    })
+    // generateSuspensionMarkAreas 已移除，由 KLineChart 替代
   })
 
   describe('期货市场功能', () => {
-    describe('FuturesMarketType 期货市场类型', () => {
-      it('应包含所有期货市场类型', () => {
-        expect(FuturesMarketType.CFFEX_INDEX).toBe('cffex_index')
-        expect(FuturesMarketType.SHFE_METAL).toBe('shfe_metal')
-        expect(FuturesMarketType.DCE_AGRI).toBe('dce_agri')
-        expect(FuturesMarketType.CZCE_AGRI).toBe('czce_agri')
-      })
-    })
-
     describe('calculateDaysToExpiry 距到期天数计算', () => {
       it('应正确计算距到期天数', () => {
         const result = calculateDaysToExpiry('2026-01-31', '2026-01-25')
@@ -607,71 +519,7 @@ describe('StockUtils 股票市场工具', () => {
       })
     })
 
-    describe('generateExpiryMarkPoints 到期标记点生成', () => {
-      it('应正确生成到期标记点', () => {
-        const contracts = [{
-          contractCode: 'IF2401',
-          lastTradeDate: '2026-01-02',
-          isMainContract: true
-        } as any]
-        const rawData = [
-          { date: '2026-01-01', high: 4000, low: 3900 },
-          { date: '2026-01-02', high: 4050, low: 3950 }
-        ]
-        const result = generateExpiryMarkPoints(contracts, rawData, 'light', true)
-        expect(result).not.toBeNull()
-        expect(result.data).toHaveLength(1)
-      })
-
-      it('空合约数组应返回null', () => {
-        expect(generateExpiryMarkPoints(null, [], 'light')).toBeNull()
-        expect(generateExpiryMarkPoints([], [], 'light')).toBeNull()
-      })
-    })
-
-    describe('generateExpiryMarkLines 到期标记线生成', () => {
-      it('应正确生成到期标记线', () => {
-        const contracts = [{
-          contractCode: 'IF2401',
-          lastTradeDate: '2026-01-02',
-          isMainContract: true
-        } as any]
-        const rawData = [
-          { date: '2026-01-01', high: 4000 },
-          { date: '2026-01-02', high: 4050 }
-        ]
-        const result = generateExpiryMarkLines(contracts, rawData, 'light')
-        expect(result).not.toBeNull()
-        expect(result.symbol).toBe('none')
-      })
-
-      it('空合约数组应返回null', () => {
-        expect(generateExpiryMarkLines(null, [], 'light')).toBeNull()
-      })
-    })
-
-    describe('generateMainSwitchMarkPoints 主力切换标记', () => {
-      it('应正确生成主力切换标记', () => {
-        const switchPoints = [{
-          switch_date: '2026-01-02',
-          old_contract_code: 'IF2401',
-          new_contract_code: 'IF2402'
-        }]
-        const rawData = [
-          { date: '2026-01-01', high: 4000 },
-          { date: '2026-01-02', high: 4050 }
-        ]
-        const result = generateMainSwitchMarkPoints(switchPoints, rawData, 'light')
-        expect(result).not.toBeNull()
-        expect(result.data).toHaveLength(1)
-        expect(result.data[0].symbol).toBe('triangle')
-      })
-
-      it('空切换点应返回null', () => {
-        expect(generateMainSwitchMarkPoints(null, [], 'light')).toBeNull()
-        expect(generateMainSwitchMarkPoints([], [], 'light')).toBeNull()
-      })
-    })
+    // generateExpiryMarkPoints/Lines, generateMainSwitchMarkPoints 已移除
 
     describe('formatOpenInterest 持仓量格式化', () => {
       it('亿手应正确格式化', () => {

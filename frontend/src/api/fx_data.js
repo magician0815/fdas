@@ -25,3 +25,15 @@ export function getFXData(params = {}) {
 export function getIndicators(params = {}) {
   return request.get('/api/v1/fx/indicators', { params })
 }
+
+/** 搜索外汇标的 */
+export function searchSymbols(query) {
+  return request.get('/api/v1/forex-symbols/', { params: { search: query, limit: 20 } })
+}
+
+/** 获取外汇K线图表数据 */
+export function getChartData(symbolId, period = 'daily') {
+  return request.get('/api/v1/fx/data', { params: { symbol_id: symbolId, period } })
+}
+
+export default { searchSymbols, getChartData, getFXData, getIndicators }

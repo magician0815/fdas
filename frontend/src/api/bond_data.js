@@ -43,3 +43,15 @@ export function getBondLatestData(symbolId) {
 export function getBondLatestDate(symbolId) {
   return request.get(`/api/v1/bond/data/${symbolId}/latest-date`)
 }
+
+/** 搜索债券标的 */
+export function searchSymbols(query) {
+  return request.get('/api/v1/bond-symbols/', { params: { search: query, limit: 20 } })
+}
+
+/** 获取债券K线图表数据 */
+export function getChartData(symbolId, period = 'daily') {
+  return request.get('/api/v1/bond/data/', { params: { symbol_id: symbolId, period } })
+}
+
+export default { searchSymbols, getChartData, getBondDailyData, getBondLatestData, getBondLatestDate }

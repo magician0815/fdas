@@ -1,8 +1,8 @@
 # FDAS 部署操作文档
 
 > 金融数据抓取与分析系统 - 多容器部署方案操作指南
-> Version: 2.0.1
-> Updated: 2026-04-17
+> Version: 2.5.0
+> Updated: 2026-07-21
 
 ---
 
@@ -110,7 +110,21 @@ ENABLE_IP_VALIDATION=true
 
 ## 3. 部署步骤
 
-### 3.1 快速部署
+> **v2.5.0 更新**: 前端图表引擎由 ECharts 自研方案迁移至 KLineChart v10。
+> 新增 npm 依赖 `klinecharts`（~40KB gzipped, MIT License）。
+> 前端构建方式不变：`cd frontend && npm run build`。
+
+### 3.1 前端单独部署
+
+```bash
+# 仅更新前端（dist/ 通过卷挂载自动生效）
+cd frontend
+npm install        # 安装依赖（含新增的 klinecharts）
+npm run build      # 构建生产版本
+docker compose -f ../docker/docker-compose.yml restart fdas-app  # 刷新卷挂载缓存
+```
+
+### 3.2 快速部署
 
 ```bash
 cd deployment-packages/multi-container

@@ -28,7 +28,7 @@ from app.schemas.futures_variety import (
 from app.schemas.common import Response
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(prefix="/futures-varieties")
 
 
 @router.get("/", response_model=Response)

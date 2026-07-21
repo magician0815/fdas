@@ -1107,4 +1107,31 @@ const fxData: Ref<FXDataItem[]> = ref([])
 - [PRD.md](PRD.md) - 需求设计文档
 - [ARCHITECTURE.md](ARCHITECTURE.md) - 技术架构文档
 - [PERMISSION_DESIGN.md](PERMISSION_DESIGN.md) - 权限设计文档
+- [KLINECHART_INTEGRATION.md](KLINECHART_INTEGRATION.md) - KLineChart 集成设计文档
+
+---
+
+## 九、KLineChart 图表组件编码规范 (v2.5.0 新增)
+
+### 9.1 MarketProfile 配置编写规范
+
+- 每个金融市场必须定义完整的 `MarketProfile` 对象
+- `features` 字段按 `false` 为默认值，仅启用的特性设为 `true`
+- `identification.matcher` 必须按优先级排序，`priority` 值越小越优先
+- 新增市场只需 `registerMarketProfile()` 注册，不应修改现有组件
+
+### 9.2 自定义扩展注册规范
+
+- 所有 KLineChart 扩展必须在 `chartExtensions/index.ts` 中注册
+- 新指标通过 `registerIndicator()` 全局注册，遵循 KLineChart `IndicatorTemplate` 接口
+- 新覆盖层通过 `registerOverlay()` 全局注册，遵循 KLineChart `OverlayTemplate` 接口
+- 主题通过 `registerStyles(name, styles)` 注册，不应硬编码配色
+- 扩展文件名采用 kebab-case：`limitUpDown.ts` / `openInterest.ts`
+
+### 9.3 数据管道规范
+
+- 所有图表数据必须通过 `useDataLoader.convertToKLineData()` 转换
+- 复权处理在数据进入 KLineChart 之前在 `useDataLoader` 层完成
+- `chart.setDataLoader()` 的回调必须从 Pinia Store 或本地数组读取数据
+- 不允许在 DataLoader 回调中发起 HTTP 请求（保持离线）
 - [PHASE1_DESIGN.md](PHASE1_DESIGN.md) - 第一阶段设计文档

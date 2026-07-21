@@ -58,3 +58,15 @@ export function getStockLatestDate(symbolId) {
 export function getStockAdjustedData(params = {}) {
   return request.get('/api/v1/stock/data/adjusted', { params })
 }
+
+/** 搜索股票标的 */
+export function searchSymbols(query) {
+  return request.get('/api/v1/stock-symbols/', { params: { search: query, limit: 20 } })
+}
+
+/** 获取K线图表数据 */
+export function getChartData(symbolId, period = 'daily') {
+  return request.get('/api/v1/stock/data/', { params: { symbol_id: symbolId, period } })
+}
+
+export default { searchSymbols, getChartData, getStockDailyData, getStockLatestData, getStockLatestDate, getStockAdjustedData }

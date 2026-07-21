@@ -9,6 +9,7 @@
 
 /**
  * 市场类型枚举.
+ * @deprecated 已由 useMarketProfile.MarketId 替代，保留仅供向后兼容。
  */
 export enum MarketType {
   /** 外汇市场 */
@@ -27,6 +28,7 @@ export enum MarketType {
 
 /**
  * 市场配置信息.
+ * @deprecated 已由 useMarketProfile.MarketProfile 替代，保留仅供向后兼容。
  */
 export interface MarketConfig {
   /** 市场类型 */
@@ -50,6 +52,7 @@ export interface MarketConfig {
 /**
  * 各市场配置.
  */
+/** @deprecated 已由 useMarketProfile 替代 */
 export const marketConfigs: Record<MarketType, MarketConfig> = {
   [MarketType.FOREX]: {
     type: MarketType.FOREX,
@@ -522,110 +525,8 @@ export interface DividendEvent {
   adjustmentFactor: number
 }
 
-/**
- * 生成除权除息标记配置.
- *
- * @param events - 除权除息事件数组
- * @param theme - 主题名称
- * @param rawData - K线数据数组
- * @returns ECharts markPoint配置
- */
-export function generateDividendMarkPoints(
-  events: DividendEvent[],
-  theme: string,
-  rawData: Array<{ date: string; high: number | string }>
-): any {
-  if (!events || events.length === 0) return null
-
-  const dividendColor = theme === 'dark' ? '#faad14' : '#f59e0b'
-  const dividendBgColor = theme === 'dark' ? 'rgba(250, 173, 20, 0.15)' : 'rgba(245, 158, 11, 0.1)'
-
-  const data = events.map(event => {
-    // 找到对应日期的K线索引
-    const index = rawData.findIndex(d => d.date === event.eventDate)
-    if (index === -1) return null
-
-    const high = parseFloat(rawData[index]?.high) || 0
-
-    return {
-      coord: [index, high],
-      symbol: 'pin',
-      symbolSize: 30,
-      itemStyle: {
-        color: dividendColor
-      },
-      label: {
-        show: true,
-        formatter: event.eventType === 'dividend' ? 'DR' : event.eventType === 'bonus' ? '送股' : 'DXR',
-        color: '#ffffff',
-        fontSize: 10,
-        fontWeight: 'bold'
-      }
-    }
-  }).filter(Boolean)
-
-  if (data.length === 0) return null
-
-  return {
-    data,
-    animation: false
-  }
-}
-
-/**
- * 生成除权除息缺口标记线配置.
- *
- * @param events - 除权除息事件数组
- * @param rawData - K线数据数组
- * @param theme - 主题名称
- * @returns ECharts markLine配置
- */
-export function generateDividendMarkLines(
-  events: DividendEvent[],
-  rawData: Array<{ date: string; high: number | string; low: number | string }>,
-  theme: string
-): any {
-  if (!events || events.length === 0) return null
-
-  const dividendColor = theme === 'dark' ? '#faad14' : '#f59e0b'
-
-  const data = events.map(event => {
-    // 找到对应日期的K线索引
-    const index = rawData.findIndex(d => d.date === event.eventDate)
-    if (index === -1) return null
-
-    // 获取当日最高价和最低价
-    const high = parseFloat(rawData[index]?.high) || 0
-    const low = parseFloat(rawData[index]?.low) || 0
-
-    return {
-      name: `${event.eventDate} ${event.eventType === 'dividend' ? '除息' : '除权'}`,
-      xAxis: index,
-      yAxis: high,
-      lineStyle: {
-        type: 'solid',
-        width: 2,
-        color: dividendColor,
-        opacity: 0.6
-      },
-      label: {
-        show: true,
-        formatter: event.eventType === 'dividend' ? '除息' : '除权',
-        position: 'insideEndTop',
-        fontSize: 10,
-        color: dividendColor
-      }
-    }
-  }).filter(Boolean)
-
-  if (data.length === 0) return null
-
-  return {
-    data,
-    animation: false,
-    symbol: 'none'
-  }
-}
+// generateDividendMarkPoints 和 generateDividendMarkLines 已移除
+// 由 KLineChart chartExtensions/dividendMarker.ts 替代
 
 /**
  * 检测停牌期间数据缺失.
@@ -683,55 +584,8 @@ export function detectSuspensionPeriods(
  * @param theme - 主题名称
  * @returns ECharts markArea配置
  */
-export function generateSuspensionMarkAreas(
-  suspensions: SuspensionPeriod[],
-  rawData: Array<{ date: string; high: number | string; low: number | string }>,
-  theme: string
-): any {
-  if (!suspensions || suspensions.length === 0) return null
-
-  const bgColor = theme === 'dark' ? 'rgba(100, 100, 100, 0.2)' : 'rgba(200, 200, 200, 0.2)'
-  const borderColor = theme === 'dark' ? '#666666' : '#cccccc'
-
-  const data = suspensions.map(s => {
-    // 获取区间内的最高价和最低价
-    const rangeData = rawData.slice(s.startIndex, s.endIndex + 1)
-    const highs = rangeData.map(d => parseFloat(d.high) || 0)
-    const lows = rangeData.map(d => parseFloat(d.low) || 0)
-    const maxHeight = Math.max(...highs)
-    const minHeight = Math.min(...lows)
-
-    return [
-      {
-        xAxis: s.startIndex,
-        yAxis: maxHeight,
-        name: `停牌开始 ${s.startDate}`,
-        itemStyle: {
-          color: bgColor,
-          borderColor: borderColor,
-          borderWidth: 1
-        }
-      },
-      {
-        xAxis: s.endIndex,
-        yAxis: minHeight,
-        name: `停牌结束 ${s.endDate}`,
-        label: {
-          show: true,
-          formatter: `停牌${s.days}天`,
-          position: 'inside'
-        }
-      }
-    ]
-  })
-
-  if (data.length === 0) return null
-
-  return {
-    data,
-    animation: false
-  }
-}
+// generateSuspensionMarkAreas 已移除
+// 由 KLineChart chartExtensions 替代
 
 // ============================================
 // 期货市场专属功能
@@ -863,147 +717,7 @@ export function isContractExpired(contract: FuturesContract): boolean {
  * @param showWarning - 是否显示即将到期警告
  * @returns ECharts markPoint配置
  */
-export function generateExpiryMarkPoints(
-  contracts: FuturesContract[],
-  rawData: Array<{ date: string; high: number | string; low: number | string }>,
-  theme: string,
-  showWarning: boolean = true
-): any {
-  if (!contracts || contracts.length === 0) return null
-
-  const expiredColor = theme === 'dark' ? '#ef4444' : '#dc3545'
-  const warningColor = theme === 'dark' ? '#f59e0b' : '#ffc107'
-  const normalColor = theme === 'dark' ? '#6b7280' : '#9ca3af'
-
-  const data: any[] = []
-
-  for (const contract of contracts) {
-    // 找到到期日在K线数据中的位置
-    const expiryIndex = rawData.findIndex(d => d.date === contract.lastTradeDate)
-
-    if (expiryIndex === -1) continue
-
-    const high = parseFloat(rawData[expiryIndex]?.high) || 0
-    const isExpired = isContractExpired(contract)
-    const isNearExpiry = isContractNearExpiry(contract, 5)
-    const isMain = contract.isMainContract
-
-    // 只标记主力合约的到期日，或即将到期的合约
-    if (!isMain && !isNearExpiry && !isExpired) continue
-
-    let color = normalColor
-    let symbolSize = 30
-    let label = '到期'
-
-    if (isExpired) {
-      color = expiredColor
-      label = '已到期'
-      symbolSize = 35
-    } else if (isNearExpiry && showWarning) {
-      color = warningColor
-      const daysToExpiry = calculateDaysToExpiry(contract.lastTradeDate)
-      label = `${daysToExpiry}天后到期`
-      symbolSize = 32
-    } else if (isMain) {
-      color = theme === 'dark' ? '#3b82f6' : '#2196f3'
-      label = '主力到期'
-      symbolSize = 28
-    }
-
-    data.push({
-      coord: [expiryIndex, high],
-      symbol: 'pin',
-      symbolSize,
-      itemStyle: { color },
-      label: {
-        show: true,
-        formatter: label,
-        color: '#ffffff',
-        fontSize: 10,
-        fontWeight: 'bold'
-      }
-    })
-  }
-
-  if (data.length === 0) return null
-
-  return {
-    data,
-    animation: false
-  }
-}
-
-/**
- * 生成合约到期日标记线配置.
- *
- * @param contracts - 合约列表
- * @param rawData - K线数据数组
- * @param theme - 主题名称
- * @returns ECharts markLine配置
- */
-export function generateExpiryMarkLines(
-  contracts: FuturesContract[],
-  rawData: Array<{ date: string; high: number | string }>,
-  theme: string
-): any {
-  if (!contracts || contracts.length === 0) return null
-
-  const expiredColor = theme === 'dark' ? '#ef4444' : '#dc3545'
-  const mainColor = theme === 'dark' ? '#3b82f6' : '#2196f3'
-
-  const data: any[] = []
-
-  for (const contract of contracts) {
-    const expiryIndex = rawData.findIndex(d => d.date === contract.lastTradeDate)
-
-    if (expiryIndex === -1) continue
-
-    const high = parseFloat(rawData[expiryIndex]?.high) || 0
-    const isExpired = isContractExpired(contract)
-    const isMain = contract.isMainContract
-
-    // 只标记主力合约和已到期合约
-    if (!isMain && !isExpired) continue
-
-    const color = isExpired ? expiredColor : mainColor
-
-    data.push({
-      name: `${contract.contractCode} 到期日`,
-      xAxis: expiryIndex,
-      yAxis: high,
-      lineStyle: {
-        type: 'dashed',
-        width: 2,
-        color,
-        opacity: 0.6
-      },
-      label: {
-        show: true,
-        formatter: `${contract.contractCode}到期`,
-        position: 'insideEndTop',
-        fontSize: 10,
-        color
-      }
-    })
-  }
-
-  if (data.length === 0) return null
-
-  return {
-    data,
-    animation: false,
-    symbol: 'none'
-  }
-}
-
-/**
- * 生成主力合约切换点标记.
- *
- * @param switchPoints - 主力合约切换点列表
- * @param rawData - K线数据数组
- * @param theme - 主题名称
- * @returns ECharts markPoint配置
- */
+// 重要接口保留（ContractSwitchPoint 等可能被后端API使用）
 export interface ContractSwitchPoint {
   switch_date: string
   old_contract_code: string
@@ -1011,43 +725,8 @@ export interface ContractSwitchPoint {
   price_diff?: number
 }
 
-export function generateMainSwitchMarkPoints(
-  switchPoints: ContractSwitchPoint[],
-  rawData: Array<{ date: string; high: number | string }>,
-  theme: string
-): any {
-  if (!switchPoints || switchPoints.length === 0) return null
-
-  const switchColor = theme === 'dark' ? '#8b5cf6' : '#9c27b0'
-
-  const data = switchPoints.map(point => {
-    const switchIndex = rawData.findIndex(d => d.date === point.switch_date)
-    if (switchIndex === -1) return null
-
-    const high = parseFloat(rawData[switchIndex]?.high) || 0
-
-    return {
-      coord: [switchIndex, high],
-      symbol: 'triangle',
-      symbolSize: 20,
-      itemStyle: { color: switchColor },
-      label: {
-        show: true,
-        formatter: '主力切换',
-        color: '#ffffff',
-        fontSize: 9,
-        fontWeight: 'bold'
-      }
-    }
-  }).filter(Boolean)
-
-  if (data.length === 0) return null
-
-  return {
-    data,
-    animation: false
-  }
-}
+// generateExpiryMarkPoints, generateExpiryMarkLines, generateMainSwitchMarkPoints 已移除
+// 由 KLineChart chartExtensions 替代
 
 /**
  * 格式化持仓量数值显示.

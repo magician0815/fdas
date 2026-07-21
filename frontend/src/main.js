@@ -13,6 +13,11 @@ import App from './App.vue'
 import router from './router'
 import './styles/index.css'
 import { useAuthStore } from './stores/auth'
+import { registerAllExtensions } from './chartExtensions/index'
+
+// 注册 KLineChart 自定义扩展（指标、覆盖层、主题）
+// 在应用挂载前全局注册，所有 KLineChart 实例共享
+registerAllExtensions()
 
 // 创建Vue应用实例
 const app = createApp(App)

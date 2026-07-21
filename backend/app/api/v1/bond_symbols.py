@@ -30,7 +30,7 @@ from app.schemas.common import Response
 from app.services.market_registry import market_registry
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(prefix="/bond-symbols")
 
 
 @router.get("/", response_model=Response)

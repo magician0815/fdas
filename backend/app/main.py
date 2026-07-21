@@ -122,7 +122,8 @@ app.include_router(futures_varieties.router, prefix="/api/v1", tags=["期货品�
 app.include_router(futures_data.router, prefix="/api/v1", tags=["期货行情数据"])
 # bond_symbols 无 prefix
 app.include_router(bond_symbols.router, prefix="/api/v1", tags=["债券标的"])
-# bond_data 如有独立 prefix 需要调整
+# bond_data.router 已包含 prefix="/bond/data"
+app.include_router(bond_data.router, prefix="/api/v1", tags=["债券行情数据"])
 
 # 静态文件服务（前端）
 # 检查静态文件目录是否存在
