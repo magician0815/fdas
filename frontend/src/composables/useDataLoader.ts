@@ -20,6 +20,7 @@ interface RawDataItem {
   turnover?: number | string
   open_interest?: number
   yield?: number
+  yield_rate?: number
   spread?: number
   change_pct?: number
 }
@@ -50,11 +51,10 @@ export function convertToKLineData(
     high: Number(item.high),
     low: Number(item.low),
     close: Number(item.close),
-    volume: Number(item.volume || 0),
+    volume: Number(item.volume ?? 0),
     turnover: Number(item.turnover || 0),
-    // 扩展字段（自定义指标使用）
     open_interest: item.open_interest,
-    yield: item.yield,
+    yield: item.yield ?? item.yield_rate,
     spread: item.spread,
     change_pct: Number(item.change_pct || 0),
   }))

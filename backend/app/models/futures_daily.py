@@ -48,15 +48,15 @@ class FuturesDaily(Base):
     """
     __tablename__ = "futures_daily"
     __table_args__ = (
-        UniqueConstraint("contract_id", "date", "datasource_id", name="uq_futures_daily_contract_date_datasource"),
-        # PostgreSQL分区表，索引在init-db.sql中创建
+        UniqueConstraint("contract_id", "market_id", "date", "datasource_id", name="uq_futures_daily_contract_market_date_ds"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="数据唯一标识ID")
     contract_id = Column(UUID(as_uuid=True), ForeignKey("futures_contracts.id"), nullable=False, comment="关联合约ID")
     variety_id = Column(UUID(as_uuid=True), ForeignKey("futures_varieties.id"), nullable=False, index=True, comment="关联品种ID")
+    market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=True, comment="所属市场ID")
     datasource_id = Column(UUID(as_uuid=True), ForeignKey("datasources.id"), comment="数据来源ID")
-    date = Column(Date, nullable=False, comment="交易日期")
+    date = Column(Date, primary_key=True, nullable=False, comment="交易日期")
     open = Column(Numeric(10, 4), comment="开盘价")
     high = Column(Numeric(10, 4), comment="最高价")
     low = Column(Numeric(10, 4), comment="最低价")

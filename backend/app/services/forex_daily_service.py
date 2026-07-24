@@ -101,11 +101,12 @@ class ForexDailyService:
 
         # 为每条记录添加symbol_id和datasource_id，并清理不需要的字段
         # ForexDaily表需要的字段：symbol_id, datasource_id, date, open, high, low, close, volume, change_pct, change_amount, amplitude
-        allowed_fields = {"symbol_id", "datasource_id", "date", "open", "high", "low", "close", "volume", "change_pct", "change_amount", "amplitude", "updated_at"}
+        allowed_fields = {"symbol_id", "market_id", "datasource_id", "date", "open", "high", "low", "close", "volume", "change_pct", "change_amount", "amplitude", "updated_at"}
         cleaned_records = []
         for record in records:
             cleaned_record = {k: v for k, v in record.items() if k in allowed_fields}
             cleaned_record["symbol_id"] = symbol_id
+            cleaned_record["market_id"] = symbol.market_id
             if datasource_id:
                 cleaned_record["datasource_id"] = datasource_id
             cleaned_records.append(cleaned_record)
@@ -235,7 +236,7 @@ class ForexDailyService:
         for record in data:
             stmt = insert(ForexDaily).values(**record)
             stmt = stmt.on_conflict_do_update(
-                constraint="forex_daily_symbol_id_date_datasource_id_key",
+                constraint="uq_forex_daily_symbol_market_date_ds",
                 set_={
                     "open": stmt.excluded.open,
                     "high": stmt.excluded.high,

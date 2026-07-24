@@ -139,4 +139,4 @@ cd deployment-packages/update
 |------|------|
 | SESSION_SECRET | 无变更 |
 | CORS | 新增允许域名配置 |
-| 密码策略 | 无变更 |
+| 密码策略 | 无变更 |v2.5.0 - KLineChart 图表引擎重构 (2026-07-21)

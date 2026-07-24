@@ -9,7 +9,7 @@ import { nextTick } from 'vue'
 // Mock klinecharts 模块
 vi.mock('klinecharts', () => ({
   init: vi.fn(() => ({
-    setPrecision: vi.fn(),
+    setSymbol: vi.fn(),
     setOffsetRightDistance: vi.fn(),
     applyNewData: vi.fn(),
     createIndicator: vi.fn(),

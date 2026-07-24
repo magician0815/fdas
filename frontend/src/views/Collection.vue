@@ -50,7 +50,7 @@
         </el-table-column>
         <el-table-column label="标的" width="150">
           <template #default="{ row }">
-            <span class="symbol-badge">{{ getSymbolCode(row.symbol_id) }}</span>
+            <span class="symbol-badge">{{ getSymbolCodes(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="数据源" width="150">
@@ -142,15 +142,31 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="标的" prop="symbol_id">
-          <el-select v-model="formData.symbol_id" placeholder="选择标的" filterable>
-            <el-option
-              v-for="s in symbols"
-              :key="s.id"
-              :label="`${s.name} (${s.code})`"
-              :value="s.id"
-            />
-          </el-select>
+        <el-form-item label="标的" prop="symbol_ids">
+          <div style="display:flex;gap:8px;width:100%">
+            <el-select
+              v-model="formData.symbol_ids"
+              placeholder="输入代码或名称搜索，可多选"
+              filterable
+              remote
+              multiple
+              :remote-method="searchSymbols"
+              :loading="symbolSearching"
+              clearable
+              collapse-tags
+              collapse-tags-tooltip
+              :max-collapse-tags="3"
+              style="flex:1"
+            >
+              <el-option
+                v-for="s in symbols"
+                :key="s.id"
+                :label="`${s.code} ${s.name}`"
+                :value="s.id"
+              />
+            </el-select>
+            <el-button size="small" @click="selectAllSymbols" :disabled="!symbols.length">全选</el-button>
+          </div>
         </el-form-item>
 
         <el-form-item label="日期范围">
@@ -237,11 +253,13 @@ import { getFuturesVarieties } from '@/api/futures_varieties'
 import { getBondSymbols } from '@/api/bond_symbols'
 import { getDatasources } from '@/api/datasources'
 import { getMarkets } from '@/api/markets'
+import logger from '@/services/logger'
 
 // 数据状态
 const loading = ref(false)
 const tasks = ref([])
 const symbols = ref([])
+const symbolSearching = ref(false)
 const datasources = ref([])
 const markets = ref([])
 const taskLogs = ref([])
@@ -270,7 +288,7 @@ const formData = reactive({
   name: '',
   datasource_id: '',
   market_id: '',
-  symbol_id: '',
+  symbol_ids: [],
   start_date: null,
   end_date: null,
   cron_expr: '',
@@ -287,7 +305,7 @@ const formRules = {
   name: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
   datasource_id: [{ required: true, message: '请选择数据源', trigger: 'change' }],
   market_id: [{ required: true, message: '请选择市场', trigger: 'change' }],
-  symbol_id: [{ required: true, message: '请选择标的', trigger: 'change' }],
+  symbol_ids: [{ type: 'array', required: true, message: '请选择标的', trigger: 'change' }],
 }
 
 // 统计数据
@@ -327,9 +345,12 @@ const getLogStatusType = (status) => {
 }
 
 // 根据ID获取标的代码
-const getSymbolCode = (symbolId) => {
-  const s = symbols.value.find(s => s.id === symbolId)
-  return s?.code || '--'
+const getSymbolCodes = (row) => {
+  const ids = row.symbol_ids?.length ? row.symbol_ids : (row.symbol_id ? [row.symbol_id] : [])
+  return ids.map(id => {
+    const s = symbols.value.find(s => s.id === id)
+    return s?.code || id?.slice(0, 8) || '--'
+  }).join(', ')
 }
 
 // 根据ID获取数据源名称
@@ -353,35 +374,44 @@ const onMarketChange = (marketId) => {
   loadSymbolsByMarket(marketId)
 }
 
-// 根据市场ID加载对应标的
-const loadSymbolsByMarket = async (marketId) => {
-  if (!marketId) {
-    symbols.value = []
-    return
-  }
+// 标的远程搜索
+const selectAllSymbols = () => {
+  formData.symbol_ids = symbols.value.map(s => s.id)
+}
 
-  const market = markets.value.find(m => m.id === marketId)
+const searchSymbols = async (query) => {
+  if (!formData.market_id) return
+  const market = markets.value.find(m => m.id === formData.market_id)
   if (!market) return
 
+  symbolSearching.value = true
   try {
     let res
-    // 股票类市场统一处理（包括stock_cn, stock_us, stock_hk等）
     if (market.code && market.code.startsWith('stock')) {
-      res = await getStockSymbols({ marketId, activeOnly: true })
+      res = await getStockSymbols({ market_id: formData.market_id, search: query, active_only: true, limit: 50 })
     } else if (market.code === 'forex') {
-      res = await getForexSymbols({ activeOnly: true })
-    } else if (market.code === 'futures' || market.code === 'futures_cn') {
-      res = await getFuturesVarieties({ activeOnly: true })
+      res = await getForexSymbols({ search: query, activeOnly: true })
+    } else if (market.code && market.code.startsWith('futures')) {
+      res = await getFuturesVarieties({ market_id: formData.market_id, search: query, active_only: true })
     } else if (market.code === 'bond' || market.code.startsWith('bond')) {
-      res = await getBondSymbols({ marketId, activeOnly: true })
+      res = await getBondSymbols({ market_id: formData.market_id, search: query, active_only: true })
     } else {
-      // 默认外汇
-      res = await getForexSymbols({ activeOnly: true })
+      res = await getForexSymbols({ search: query, activeOnly: true })
     }
     if (res.success) symbols.value = res.data
   } catch (e) {
-    console.error('加载标的失败:', e)
+    logger.error('搜索标的失败', e)
+  } finally {
+    symbolSearching.value = false
   }
+}
+
+// 根据市场ID加载初始标的（前20个）
+const loadSymbolsByMarket = async (marketId) => {
+  symbols.value = []
+  if (!marketId) return
+  // 触发远程搜索加载初始列表
+  await searchSymbols('')
 }
 
 // 获取任务列表
@@ -424,36 +454,41 @@ const showCreateDialog = () => {
 }
 
 // 编辑任务
-const editTask = (task) => {
+const editTask = async (task) => {
   isEdit.value = true
-  resetForm()
-  formData.name = task.name
+  // 先加载标的选项，再设置表单值
+  formData.id = task.id
   formData.datasource_id = task.datasource_id
   formData.market_id = task.market_id
-  formData.symbol_id = task.symbol_id
+  await loadSymbolsByMarket(task.market_id)
+  // 确保已选标的在选项列表中
+  const sids = task.symbol_ids || (task.symbol_id ? [task.symbol_id] : [])
+  if (sids.length) {
+    await searchSymbols('')
+  }
+  // 选项加载完毕后再设置表单值
+  formData.name = task.name
+  formData.symbol_ids = sids
   formData.start_date = task.start_date
   formData.end_date = task.end_date
   formData.cron_expr = task.cron_expr || ''
   dateRange.value = [task.start_date, task.end_date]
-  formData.id = task.id
-  // 编辑时根据数据源加载对应市场的标的
-  loadSymbolsByMarket(task.market_id)
   dialogVisible.value = true
 }
 
 // 重置表单
 const resetForm = () => {
+  formData.id = undefined
   formData.name = ''
   formData.datasource_id = ''
   formData.market_id = ''
-  formData.symbol_id = ''
+  formData.symbol_ids = []
   formData.start_date = null
   formData.end_date = null
   formData.cron_expr = ''
-  formData.id = undefined
   dateRange.value = [null, null]
   validationResult.value = null
-  if (formRef.value) formRef.value.resetFields()
+  if (formRef.value) formRef.value.clearValidate()
 }
 
 // 校验参数
@@ -461,12 +496,16 @@ const validateForm = async () => {
   try {
     await formRef.value.validate()
     validating.value = true
-    const res = await validateTaskParams(formData)
+    const symbol_id = formData.symbol_ids?.[0] || ''
+    const payload = { ...formData, symbol_id }
+    if (formData.id) payload.exclude_task_id = formData.id
+    const res = await validateTaskParams(payload)
     if (res.success) {
       validationResult.value = res.data
     }
   } catch (e) {
-    ElMessage.warning('请先填写必填项')
+    const msg = e?.response?.data?.detail || e?.message || '请先填写必填项'
+    ElMessage.warning(typeof msg === 'string' ? msg : '请先填写必填项')
   } finally {
     validating.value = false
   }
@@ -488,7 +527,13 @@ const submitForm = async () => {
         ElMessage.error(res.message || '更新失败')
       }
     } else {
-      const res = await createCollectionTask(formData)
+      // 多符号：单个任务包含所有标的
+      if (!formData.symbol_ids || !formData.symbol_ids.length) {
+        ElMessage.warning('请至少选择一个标的')
+        return
+      }
+      const payload = { ...formData, symbol_id: formData.symbol_ids[0] }
+      const res = await createCollectionTask(payload)
       if (res.success) {
         ElMessage.success('任务创建成功')
         dialogVisible.value = false
@@ -498,35 +543,111 @@ const submitForm = async () => {
       }
     }
   } catch (e) {
-    ElMessage.warning('请先填写必填项')
+    const msg = e?.response?.data?.detail || e?.message || '请先填写必填项'
+    ElMessage.warning(typeof msg === 'string' ? msg : '请先填写必填项')
   } finally {
     submitting.value = false
   }
 }
 
-// 执行任务
+// 执行任务（实时进度轮询 + 浮窗）
 const executeTask = async (task) => {
   try {
-    await ElMessageBox.confirm(
-      `确定要立即执行任务 "${task.name}" 吗？`,
-      '执行确认',
-      { type: 'info' }
-    )
+    await ElMessageBox.confirm(`确定要立即执行任务 "${task.name}" 吗？`, '执行确认', { type: 'info' })
     task.executing = true
+
+    // 进度浮窗（DOM直更新，避免ElNotification非响应式问题）
+    let notifyDone = false
+    let notifyMsg = ''
+    const notifyDiv = document.createElement('div')
+    notifyDiv.className = 'collection-progress-float'
+    notifyDiv.innerHTML = `<div style="background:#1a1a2e;color:#e0e0e0;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.3);font-size:13px;min-width:260px">
+      <b>采集进度: ${task.name}</b><br><span id="progress-detail">任务启动中...</span>
+    </div>`
+    document.body.appendChild(notifyDiv)
+    notifyDiv.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999'
+
+    const updateProgressText = (text) => {
+      const el = document.getElementById('progress-detail')
+      if (el) el.textContent = text
+    }
+
+    let pollTimer = null
+    let pollCount = 0
+    const pollProgress = async () => {
+      pollCount++
+      try {
+        const logsRes = await getTaskLogs(task.id, 1)
+        if (logsRes.success && logsRes.data?.length) {
+          const log = logsRes.data[0]
+          const results = log.symbol_results || []
+          const done = results.filter(r => r.success).length
+          const total = results.length
+          const records = log.records_count || 0
+          const elapsed = ((log.duration_ms || 0) / 1000).toFixed(0)
+          if (total > 0) {
+            let msg = `已完成 ${done}/${total} 标的, ${records} 条, ${elapsed}s`
+            const failed = results.filter(r => !r.success).length
+            if (failed > 0) msg += ` | ${failed}失败`
+            updateProgressText(msg)
+          } else if (log.message) {
+            updateProgressText(log.message)
+          } else {
+            updateProgressText(`执行中... ${elapsed}s`)
+          }
+          if (log.status === 'success' || log.status === 'partial' || log.status === 'failed') {
+            notifyDone = true
+            clearInterval(pollTimer)
+            updateProgressText(log.message || log.status)
+            setTimeout(() => notifyDiv.remove(), 3000)
+            await showResultDialog(log, task)
+            fetchTasks()
+          }
+        }
+      } catch (e) {
+        updateProgressText(`轮询异常: ${e.message || e}`)
+      }
+    }
+
+    pollTimer = setInterval(pollProgress, 2000)
     const res = await executeTaskApi(task.id)
-    if (res.success) {
-      ElMessage.success(`执行成功，采集 ${res.data.records_count} 条数据`)
-      fetchTasks()
-    } else {
-      ElMessage.error(res.message || '执行失败')
-    }
+    clearInterval(pollTimer)
+    if (!notifyDone) notifyDiv.remove()
+
+    const finalRes = await getTaskLogs(task.id, 1)
+    const data = finalRes.success && finalRes.data?.length ? finalRes.data[0] : res.data
+    await showResultDialog(data, task)
+    fetchTasks()
   } catch (e) {
-    if (e !== 'cancel') {
-      ElMessage.error('执行失败')
-    }
+    if (e !== 'cancel') ElMessage.error('执行失败: ' + (e.message || e))
   } finally {
     task.executing = false
   }
+}
+
+const showResultDialog = async (data, task) => {
+  return new Promise((resolve) => {
+    let detail = `<div style="max-height:400px;overflow:auto;font-size:13px;line-height:1.8">`
+    detail += `<p><b>状态:</b> <span style="color:${data.status === 'success' ? '#22c55e' : data.status === 'partial' ? '#f59e0b' : '#ef4444'}">${data.status}</span></p>`
+    detail += `<p><b>总数据:</b> ${data.records_count || 0} 条 | <b>耗时:</b> ${((data.duration_ms || 0) / 1000).toFixed(1)}s</p>`
+    if (data.symbol_results?.length) {
+      detail += `<hr><p><b>标的明细:</b></p>`
+      data.symbol_results.forEach((r, i) => {
+        const icon = r.success ? '✓' : '✗'
+        const color = r.success ? '#22c55e' : '#ef4444'
+        detail += `<p style="color:${color}">${icon} ${i + 1}: ${r.records || 0}条`
+        if (r.retries > 0) detail += ` | 重试${r.retries}次`
+        if (r.error) detail += `<br><span style="font-size:11px;color:#999">  ${r.error}</span>`
+        detail += `</p>`
+      })
+    }
+    detail += `</div>`
+    ElMessageBox.alert(detail, `采集结果: ${task.name}`, {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '关闭',
+      callback: () => resolve(),
+    })
+  })
 }
 
 // 启用/停用任务
@@ -544,7 +665,6 @@ const toggleTask = async (task) => {
     } else {
       res = await enableTask(task.id)
     }
-    console.log('toggleTask response:', res)
     if (res && res.success) {
       ElMessage.success(`任务已${action}`)
       fetchTasks()
@@ -552,7 +672,7 @@ const toggleTask = async (task) => {
       ElMessage.error(res?.message || res?.error || `${action}失败，请检查控制台`)
     }
   } catch (e) {
-    console.error('toggleTask error:', e)
+    logger.error('切换任务状态失败', e)
     if (e !== 'cancel') {
       ElMessage.error(`${action}失败: ${e.message || e}`)
     }

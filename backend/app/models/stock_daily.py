@@ -45,9 +45,7 @@ class StockDaily(Base):
     """
     __tablename__ = "stock_daily"
     __table_args__ = (
-        UniqueConstraint("symbol_id", "market_id", "date", "datasource_id", name="stock_daily_symbol_market_date_datasource_key"),
-        # PostgreSQL分区表，主键必须包含分区键(date)
-        {"primary_key": ["id", "date"]}
+        UniqueConstraint("symbol_id", "market_id", "date", "datasource_id", name="stock_daily_symbol_id_market_id_date_datasource_id_key"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="数据唯一标识ID")

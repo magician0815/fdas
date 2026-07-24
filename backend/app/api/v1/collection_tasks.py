@@ -67,10 +67,11 @@ async def validate_collection_params(
         if len(request.name.strip()) < 2:
             validation_result.errors.append("任务名称至少需要2个字符")
             validation_result.valid = False
-        # 检查是否已存在同名任务
-        result = await db.execute(
-            select(CollectionTask).where(CollectionTask.name == request.name.strip())
-        )
+        # 检查是否已存在同名任务（编辑时排除自身）
+        name_query = select(CollectionTask).where(CollectionTask.name == request.name.strip())
+        if request.exclude_task_id:
+            name_query = name_query.where(CollectionTask.id != request.exclude_task_id)
+        result = await db.execute(name_query)
         if result.scalar_one_or_none():
             validation_result.warnings.append("已存在同名任务，建议修改名称")
 
@@ -94,65 +95,82 @@ async def validate_collection_params(
         validation_result.errors.append("市场不存在")
         validation_result.valid = False
 
-    # 4. 验证标的存在且属于该市场
-    if market and market.code == "forex":
-        result = await db.execute(
-            select(ForexSymbol).where(ForexSymbol.id == request.symbol_id)
-        )
-        symbol = result.scalar_one_or_none()
-        if not symbol:
-            validation_result.errors.append("外汇标的不存在")
-            validation_result.valid = False
-        elif not symbol.is_active:
-            validation_result.warnings.append("标的已停用")
-
-        if symbol:
-            validation_result.info["symbol_name"] = symbol.name
-            validation_result.info["symbol_code"] = symbol.code
-    elif market and market.code in ["stock_cn", "stock_us", "stock_hk"]:
-        result = await db.execute(
-            select(StockSymbol).where(StockSymbol.id == request.symbol_id)
-        )
-        symbol = result.scalar_one_or_none()
-        if not symbol:
-            validation_result.errors.append("股票标的不存在")
-            validation_result.valid = False
-        elif not symbol.is_active:
-            validation_result.warnings.append("标的已停用")
-
-        if symbol:
-            validation_result.info["symbol_name"] = symbol.name
-            validation_result.info["symbol_code"] = symbol.code
-            validation_result.info["market"] = market.code
-    elif market and market.code == "futures_cn":
-        result = await db.execute(
-            select(FuturesContract).where(FuturesContract.id == request.symbol_id)
-        )
-        contract = result.scalar_one_or_none()
-        if not contract:
-            validation_result.errors.append("期货合约不存在")
-            validation_result.valid = False
-        elif not contract.is_active:
-            validation_result.warnings.append("合约已停用")
-
-        if contract:
-            validation_result.info["symbol_name"] = contract.contract_name
-            validation_result.info["symbol_code"] = contract.contract_code
-    elif market and market.code in ["bond_cn", "bond_us"]:
-        result = await db.execute(
-            select(BondSymbol).where(BondSymbol.id == request.symbol_id)
-        )
-        symbol = result.scalar_one_or_none()
-        if not symbol:
-            validation_result.errors.append("债券标的不存在")
-            validation_result.valid = False
-        elif not symbol.is_active:
-            validation_result.warnings.append("标的已停用")
-
-        if symbol:
-            validation_result.info["symbol_name"] = symbol.name
-            validation_result.info["symbol_code"] = symbol.code
-            validation_result.info["market"] = market.code
+    # 4. 验证标的存在（优先 symbol_id，回退 symbol_ids 首个）
+    check_id = request.symbol_id or (request.symbol_ids[0] if request.symbol_ids else None)
+    if check_id and market:
+        if market.code == "forex":
+            result = await db.execute(select(ForexSymbol).where(ForexSymbol.id == check_id))
+            symbol = result.scalar_one_or_none()
+            if not symbol:
+                validation_result.errors.append("外汇标的不存在")
+                validation_result.valid = False
+            elif not symbol.is_active:
+                validation_result.warnings.append("标的已停用")
+            if symbol:
+                validation_result.info["symbol_name"] = symbol.name
+                validation_result.info["symbol_code"] = symbol.code
+                if request.symbol_ids:
+                    validation_result.info["symbol_count"] = len(request.symbol_ids)
+        elif market.code in ["stock_cn", "stock_us", "stock_hk"]:
+            result = await db.execute(select(StockSymbol).where(StockSymbol.id == check_id))
+            symbol = result.scalar_one_or_none()
+            if not symbol:
+                validation_result.errors.append("股票标的不存在")
+                validation_result.valid = False
+            elif not symbol.is_active:
+                validation_result.warnings.append("标的已停用")
+            if symbol:
+                validation_result.info["symbol_name"] = symbol.name
+                validation_result.info["symbol_code"] = symbol.code
+                validation_result.info["market"] = market.code
+                if request.symbol_ids:
+                    validation_result.info["symbol_count"] = len(request.symbol_ids)
+        elif market.code in ["forex", "crypto"]:
+            result = await db.execute(select(ForexSymbol).where(ForexSymbol.id == check_id))
+            symbol = result.scalar_one_or_none()
+            if not symbol:
+                validation_result.errors.append("标的不存在")
+                validation_result.valid = False
+            if symbol:
+                validation_result.info["symbol_name"] = symbol.name
+                validation_result.info["symbol_code"] = symbol.code
+        elif market.code.startswith("futures"):
+            # 支持合约ID和品种ID
+            result = await db.execute(select(FuturesContract).where(FuturesContract.id == check_id))
+            contract = result.scalar_one_or_none()
+            if not contract:
+                # 回退到品种查询
+                from app.models.futures_variety import FuturesVariety
+                vr = await db.execute(select(FuturesVariety).where(FuturesVariety.id == check_id))
+                variety = vr.scalar_one_or_none()
+                if not variety:
+                    validation_result.errors.append("期货合约或品种不存在")
+                    validation_result.valid = False
+                else:
+                    validation_result.info["symbol_name"] = variety.name
+                    validation_result.info["symbol_code"] = variety.code
+                    validation_result.info["is_variety"] = True
+            else:
+                if not contract.is_active:
+                    validation_result.warnings.append("合约已停用")
+                validation_result.info["symbol_name"] = contract.contract_name
+                validation_result.info["symbol_code"] = contract.contract_code
+                if request.symbol_ids:
+                    validation_result.info["symbol_count"] = len(request.symbol_ids)
+        elif market.code in ["bond_cn", "bond_us"]:
+            result = await db.execute(select(BondSymbol).where(BondSymbol.id == check_id))
+            symbol = result.scalar_one_or_none()
+            if not symbol:
+                validation_result.errors.append("债券标的不存在")
+                validation_result.valid = False
+            elif not symbol.is_active:
+                validation_result.warnings.append("标的已停用")
+            if symbol:
+                validation_result.info["symbol_name"] = symbol.name
+                validation_result.info["symbol_code"] = symbol.code
+                validation_result.info["market"] = market.code
+                if request.symbol_ids:
+                    validation_result.info["symbol_count"] = len(request.symbol_ids)
 
     # 5. 验证日期范围
     if request.start_date and request.end_date:
@@ -277,52 +295,43 @@ async def create_collection_task(
             detail="市场不存在"
         )
 
-    # 根据市场验证标的是否存在
-    if market.code == "forex":
-        result = await db.execute(
-            select(ForexSymbol).where(ForexSymbol.id == request.symbol_id)
-        )
-        symbol = result.scalar_one_or_none()
-        if not symbol:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="标的不存在"
-            )
-    elif market.code in ["stock_cn", "stock_us", "stock_hk"]:
-        result = await db.execute(
-            select(StockSymbol).where(StockSymbol.id == request.symbol_id)
-        )
-        symbol = result.scalar_one_or_none()
-        if not symbol:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="股票标的不存在"
-            )
-    elif market.code == "futures_cn":
-        result = await db.execute(
-            select(FuturesContract).where(FuturesContract.id == request.symbol_id)
-        )
-        contract = result.scalar_one_or_none()
-        if not contract:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="期货合约不存在"
-            )
-    elif market.code in ["bond_cn", "bond_us"]:
-        result = await db.execute(
-            select(BondSymbol).where(BondSymbol.id == request.symbol_id)
-        )
-        symbol = result.scalar_one_or_none()
-        if not symbol:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="债券标的不存在"
-            )
-    else:
+    # 根据市场验证标的是否存在（支持多标的 symbol_ids 和单标的 symbol_id）
+    symbol_id_list = request.symbol_ids or []
+    if not symbol_id_list and request.symbol_id:
+        symbol_id_list = [request.symbol_id]
+    if not symbol_id_list:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"暂不支持市场类型: {market.name}"
+            detail="必须至少选择一个标的"
         )
+
+    for sid in symbol_id_list:
+        if market.code == "forex":
+            result = await db.execute(select(ForexSymbol).where(ForexSymbol.id == sid))
+            if not result.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"标的不存在: {sid}")
+        elif market.code in ["stock_cn", "stock_us", "stock_hk"]:
+            result = await db.execute(select(StockSymbol).where(StockSymbol.id == sid))
+            if not result.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"股票标的不存在: {sid}")
+        elif market.code.startswith("futures"):
+            result = await db.execute(select(FuturesContract).where(FuturesContract.id == sid))
+            if not result.scalar_one_or_none():
+                # 回退到品种ID
+                from app.models.futures_variety import FuturesVariety
+                vr = await db.execute(select(FuturesVariety).where(FuturesVariety.id == sid))
+                if not vr.scalar_one_or_none():
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"期货合约/品种不存在: {sid}")
+        elif market.code in ["bond_cn", "bond_us"]:
+            result = await db.execute(select(BondSymbol).where(BondSymbol.id == sid))
+            if not result.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"债券标的不存在: {sid}")
+        elif market.code in ["forex", "crypto"]:
+            result = await db.execute(select(ForexSymbol).where(ForexSymbol.id == sid))
+            if not result.scalar_one_or_none():
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"标的不存在: {sid}")
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"暂不支持市场类型: {market.name}")
 
     # 验证日期范围
     if request.start_date and request.end_date:
@@ -332,7 +341,10 @@ async def create_collection_task(
                 detail="开始日期不能晚于结束日期"
             )
 
-    task = CollectionTask(**request.model_dump())
+    task_data = request.model_dump()
+    if task_data.get("symbol_ids"):
+        task_data["symbol_ids"] = [str(sid) for sid in task_data["symbol_ids"]]
+    task = CollectionTask(**task_data)
     db.add(task)
     await db.commit()
     await db.refresh(task)
@@ -371,6 +383,8 @@ async def update_collection_task(
 
     # 更新字段
     update_data = request.model_dump(exclude_unset=True)
+    if update_data.get("symbol_ids"):
+        update_data["symbol_ids"] = [str(sid) for sid in update_data["symbol_ids"]]
 
     # 如果更新数据源ID，验证数据源存在
     if "datasource_id" in update_data:
@@ -552,145 +566,38 @@ async def execute_collection_task(
             detail="市场不存在"
         )
 
-    # 目前只支持外汇市场
-    if market.code not in ["forex", "stock_cn", "stock_us", "stock_hk", "futures_cn", "bond_cn", "bond_us"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"暂不支持手动执行市场类型: {market.name}"
-        )
-
-    # 创建执行日志
-    log = CollectionTaskLog(
-        task_id=task.id,
-        run_at=datetime.now(timezone.utc),
-        status="running",
-    )
-    db.add(log)
-    await db.commit()
-    await db.refresh(log)
-
-    start_time = datetime.now(timezone.utc)
-
+    # 委托给 collection_service 统一执行（含重试/补偿/通知机制），同步等待完成
     try:
-        # 确定日期范围
-        if request.force or not task.start_date:
-            start_date = date.today() - timedelta(days=30)
-            end_date = date.today()
-        else:
-            start_date = task.start_date
-            end_date = task.end_date or date.today()
-
-        # 根据市场类型分派到不同的服务
-        if market.code == "forex":
-            # 检查是否有已有数据，从最新日期继续采集
-            if not request.force:
-                latest_date = await forex_daily_service.get_latest_date(db, task.symbol_id)
-                if latest_date and latest_date < end_date:
-                    start_date = latest_date + timedelta(days=1)
-                    logger.info(f"从最新日期继续采集: {start_date}")
-
-            records_count = await forex_daily_service.collect_and_save(
-                db=db,
-                symbol_id=task.symbol_id,
-                datasource_id=task.datasource_id,
-                start_date=start_date,
-                end_date=end_date,
-            )
-        elif market.code in ["stock_cn", "stock_us", "stock_hk"]:
-            if not request.force:
-                latest_date = await stock_daily_service.get_latest_date(db, task.symbol_id)
-                if latest_date and latest_date < end_date:
-                    start_date = latest_date + timedelta(days=1)
-                    logger.info(f"从最新日期继续采集: {start_date}")
-
-            records_count = await stock_daily_service.collect_and_save(
-                db=db,
-                symbol_id=task.symbol_id,
-                datasource_id=task.datasource_id,
-                start_date=start_date,
-                end_date=end_date,
-            )
-        elif market.code == "futures_cn":
-            if not request.force:
-                latest_date = await futures_daily_service.get_latest_date(db, task.symbol_id)
-                if latest_date and latest_date < end_date:
-                    start_date = latest_date + timedelta(days=1)
-                    logger.info(f"从最新日期继续采集: {start_date}")
-
-            records_count = await futures_daily_service.collect_and_save(
-                db=db,
-                contract_id=task.symbol_id,
-                datasource_id=task.datasource_id,
-                start_date=start_date,
-                end_date=end_date,
-            )
-        elif market.code in ["bond_cn", "bond_us"]:
-            if not request.force:
-                latest_date = await bond_daily_service.get_latest_date(db, task.symbol_id)
-                if latest_date and latest_date < end_date:
-                    start_date = latest_date + timedelta(days=1)
-                    logger.info(f"从最新日期继续采集: {start_date}")
-
-            records_count = await bond_daily_service.collect_and_save(
-                db=db,
-                symbol_id=task.symbol_id,
-                datasource_id=task.datasource_id,
-                start_date=start_date,
-                end_date=end_date,
-            )
-
-        # 更新执行日志
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        log.status = "success"
-        log.records_count = records_count
-        log.duration_ms = duration_ms
-        log.message = f"成功采集 {records_count} 条数据"
-
-        # 更新任务状态
-        task.last_run_at = datetime.now(timezone.utc)
-        task.last_status = "success"
-        task.last_message = log.message
-        task.last_records_count = records_count
-
-        await db.commit()
-        await db.refresh(log)
-
-        logger.info(f"任务执行成功: {task.name}, 采集 {records_count} 条数据")
-
-        return Response(
-            success=True,
-            data=TaskExecuteResponse(
-                task_id=task.id,
-                task_name=task.name,
-                symbol=str(task.symbol_id),
-                status="success",
-                records_count=records_count,
-                message=log.message,
-                duration_ms=duration_ms,
-            ),
-            message="任务执行成功",
-        )
-
+        await collection_service.execute_task(task_id)
     except Exception as e:
-        # 更新执行日志为失败
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-        log.status = "failed"
-        log.message = str(e)
-        log.duration_ms = duration_ms
-
-        # 更新任务状态
-        task.last_run_at = datetime.now(timezone.utc)
-        task.last_status = "failed"
-        task.last_message = str(e)
-
-        await db.commit()
-
-        logger.error(f"任务执行失败: {task.name}, 错误: {str(e)}")
-
-        return Response(
-            success=False,
-            message=f"任务执行失败: {str(e)}",
+        logger.error(f"执行采集任务异常: {task_id}, {str(e)[:200]}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"执行采集任务时发生异常: {str(e)[:200]}"
         )
+
+    # 重新查询任务获取最新状态
+    await db.refresh(task)
+    result = await db.execute(
+        select(CollectionTaskLog).where(CollectionTaskLog.task_id == task.id).order_by(CollectionTaskLog.run_at.desc()).limit(1)
+    )
+    latest_log = result.scalar_one_or_none()
+
+    return Response(
+        success=task.last_status != "failed",
+        data=TaskExecuteResponse(
+            task_id=task.id,
+            task_name=task.name,
+            symbol=f"{task.last_records_count}条",
+            status=task.last_status or "unknown",
+            records_count=task.last_records_count or 0,
+            message=task.last_message or "",
+            duration_ms=latest_log.duration_ms if latest_log else 0,
+            symbol_results=latest_log.symbol_results if latest_log else None,
+            failed_symbols=latest_log.failed_symbols if latest_log else None,
+        ),
+        message=task.last_message or "执行完成",
+    )
 
 
 @router.get("/{task_id}/logs", response_model=Response)

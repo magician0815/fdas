@@ -52,7 +52,7 @@ export function searchSymbols(query) {
 
 /** 获取期货K线图表数据 */
 export function getChartData(symbolId, period = 'daily') {
-  return request.get('/api/v1/futures/data/', { params: { symbol_id: symbolId, period } })
+  return request.get('/api/v1/futures/data/', { params: { variety_id: symbolId, period } })
 }
 
 export default { searchSymbols, getChartData, getFuturesDailyData, getFuturesLatestData, getFuturesLatestDate }

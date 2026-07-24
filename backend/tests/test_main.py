@@ -88,4 +88,4 @@ class TestHealthCheck:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        assert data["version"] == "2.2.2"
+        assert data["version"] == "2.4.0"

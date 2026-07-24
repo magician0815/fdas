@@ -40,13 +40,12 @@ class ForexDaily(Base):
     """
     __tablename__ = "forex_daily"
     __table_args__ = (
-        UniqueConstraint("symbol_id", "date", "datasource_id", name="forex_daily_symbol_id_date_datasource_id_key"),
-        # PostgreSQL分区表，主键必须包含分区键(date)
-        {"primary_key": ["id", "date"]}
+        UniqueConstraint("symbol_id", "market_id", "date", "datasource_id", name="uq_forex_daily_symbol_market_date_ds"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="数据唯一标识ID")
     symbol_id = Column(UUID(as_uuid=True), ForeignKey("forex_symbols.id"), nullable=False, comment="关联货币对ID")
+    market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=True, comment="所属市场ID")
     datasource_id = Column(UUID(as_uuid=True), ForeignKey("datasources.id"), comment="数据来源ID")
     date = Column(Date, primary_key=True, nullable=False, comment="交易日期")
     open = Column(Numeric(10, 4), comment="开盘价")

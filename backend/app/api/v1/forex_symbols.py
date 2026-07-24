@@ -34,6 +34,8 @@ router = APIRouter()
 @router.get("/", response_model=Response)
 async def list_forex_symbols(
     active_only: bool = True,
+    search: str = None,
+    limit: int = 200,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -44,11 +46,19 @@ async def list_forex_symbols(
 
     Args:
         active_only: 是否只返回启用的标的，默认True
+        search: 搜索关键词（匹配代码或名称）
+        limit: 返回数量限制
     """
     query = select(ForexSymbol)
     if active_only:
         query = query.where(ForexSymbol.is_active == True)
-    query = query.order_by(ForexSymbol.code)
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(
+            (ForexSymbol.code.ilike(search_pattern)) |
+            (ForexSymbol.name.ilike(search_pattern))
+        )
+    query = query.order_by(ForexSymbol.code).limit(limit)
 
     result = await db.execute(query)
     symbols = result.scalars().all()

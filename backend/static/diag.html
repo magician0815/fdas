@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>诊断</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#e0e0e0;font-family:monospace;padding:20px}
+h2{color:#f59e0b;margin:10px 0}
+.pass{color:#4ade80}.fail{color:#ef4444}
+pre{background:#111;padding:10px;margin:5px 0;font-size:11px;max-height:200px;overflow:auto}
+#c{width:100%;height:500px;background:#1a1a2e;border:2px solid #333}
+</style></head>
+<body>
+<h2>分层诊断</h2>
+<div id="out"></div>
+<div id="c"></div>
+<script src="/klinecharts-umd.js"></script>
+<script>
+var out=document.getElementById('out')
+function step(n,msg,ok){out.innerHTML+='<div class="'+(ok?'pass':'fail')+'">'+(ok?'✓':'✗')+' '+n+': '+msg+'</div>'}
+function json(s){out.innerHTML+='<pre>'+s+'</pre>'}
+
+async function run(){
+  var kc=window.klinecharts
+  step(1,'klinecharts 加载',!!kc)
+
+  // === 后端测试 ===
+  try{
+    var r1=await fetch('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'admin123'})})
+    var login=await r1.json()
+    step(2,'登录API',login.success)
+    var sid=login.data.session_id
+
+    var r2=await fetch('/api/v1/fx/data?symbol_id=6aa4b49f-cb3b-41d6-88b4-1fd6db81029e&limit=20',{headers:{'X-Session-ID':sid}})
+    var data=await r2.json()
+    step(3,'CNHUSD数据API success='+data.success+' count='+(data.data?.length||0),data.success&&data.data?.length>0)
+    json(JSON.stringify(data.data?.slice(0,3),null,2))
+  }catch(e){step(3,'后端错误: '+e.message,false)}
+
+  // === KLineChart 渲染测试 ===
+  try{
+    var chart=kc.init('c',{locale:'zh-CN',styles:{candle:{bar:{upColor:'#ef4444',downColor:'#22c55e'}}}})
+    step(4,'KLineChart init',!!chart)
+    if(!chart)return
+
+    chart.setDataLoader({getBars:function(p){p.callback([
+      {timestamp:Date.now()-864e5*4,open:100,high:105,low:99,close:103,volume:10000},
+      {timestamp:Date.now()-864e5*3,open:103,high:108,low:101,close:107,volume:12000},
+      {timestamp:Date.now()-864e5*2,open:107,high:110,low:105,close:106,volume:9000},
+      {timestamp:Date.now()-864e5,  open:106,high:109,low:104,close:108,volume:11000},
+      {timestamp:Date.now(),        open:108,high:112,low:107,close:110,volume:8000},
+    ],{forward:false})}})
+    step(5,'setDataLoader完成','ok')
+    chart.resetData()
+    chart.createIndicator('MA',true)
+    chart.createIndicator('VOL')
+    step(6,'resetData + MA/VOL完成','ok')
+    step(7,'等待渲染...检查上方黑色区域是否有K线图','ok')
+  }catch(e){step(4,'KLineChart错误: '+e.message+' '+e.stack,false)}
+}
+run()
+</script></body></html>

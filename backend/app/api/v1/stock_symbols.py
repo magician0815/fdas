@@ -30,7 +30,7 @@ from app.schemas.common import Response
 from app.services.market_registry import market_registry
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(prefix="/stock-symbols")
 
 
 @router.get("/", response_model=Response)
@@ -38,6 +38,8 @@ async def list_stock_symbols(
     market_id: Optional[UUID] = Query(None, description="市场ID过滤"),
     active_only: bool = Query(True, description="是否只返回启用的标的"),
     search: Optional[str] = Query(None, description="搜索代码或名称"),
+    limit: int = Query(50, ge=1, le=200, description="返回条数限制"),
+    offset: int = Query(0, ge=0, description="偏移量"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -65,7 +67,7 @@ async def list_stock_symbols(
 
     query = query.order_by(StockSymbol.code)
 
-    result = await db.execute(query)
+    result = await db.execute(query.limit(limit).offset(offset))
     symbols = result.scalars().all()
 
     return Response(

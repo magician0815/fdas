@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS collection_tasks (
     name VARCHAR(100) NOT NULL,
     datasource_id UUID NOT NULL REFERENCES datasources(id) ON DELETE CASCADE,
     market_id UUID NOT NULL REFERENCES markets(id),
-    symbol_id UUID NOT NULL,
+    symbol_id UUID,
     start_date DATE,
     end_date DATE,
     cron_expr VARCHAR(100),
@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS collection_tasks (
     last_status VARCHAR(20),
     last_message TEXT,
     last_records_count INTEGER DEFAULT 0,
+    symbol_ids JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -130,7 +131,8 @@ COMMENT ON COLUMN collection_tasks.id IS '任务唯一标识ID';
 COMMENT ON COLUMN collection_tasks.name IS '任务名称';
 COMMENT ON COLUMN collection_tasks.datasource_id IS '关联数据源ID';
 COMMENT ON COLUMN collection_tasks.market_id IS '目标市场类型ID';
-COMMENT ON COLUMN collection_tasks.symbol_id IS '目标标的ID';
+COMMENT ON COLUMN collection_tasks.symbol_id IS '目标标的ID（单标的模式）';
+COMMENT ON COLUMN collection_tasks.symbol_ids IS '多标的ID列表（JSON数组）';
 COMMENT ON COLUMN collection_tasks.start_date IS '采集开始日期';
 COMMENT ON COLUMN collection_tasks.end_date IS '采集结束日期';
 COMMENT ON COLUMN collection_tasks.cron_expr IS 'Cron定时表达式';
@@ -152,6 +154,8 @@ CREATE TABLE IF NOT EXISTS collection_task_logs (
     records_count INTEGER DEFAULT 0,
     message TEXT,
     duration_ms INTEGER,
+    symbol_results JSONB,
+    failed_symbols JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -163,18 +167,20 @@ COMMENT ON COLUMN collection_task_logs.status IS '执行状态';
 COMMENT ON COLUMN collection_task_logs.records_count IS '采集记录数';
 COMMENT ON COLUMN collection_task_logs.message IS '执行消息或错误信息';
 COMMENT ON COLUMN collection_task_logs.duration_ms IS '执行耗时（毫秒）';
+COMMENT ON COLUMN collection_task_logs.symbol_results IS '每个标的的采集结果明细（JSON数组）';
+COMMENT ON COLUMN collection_task_logs.failed_symbols IS '采集失败的标的ID列表（JSON数组）';
 COMMENT ON COLUMN collection_task_logs.created_at IS '创建时间';
 
 -- APScheduler任务表
 CREATE TABLE IF NOT EXISTS apscheduler_jobs (
     id VARCHAR(255) PRIMARY KEY,
-    next_run_time TIMESTAMP WITH TIME ZONE,
+    next_run_time DOUBLE PRECISION,
     job_state BYTEA NOT NULL
 );
 
 COMMENT ON TABLE apscheduler_jobs IS '定时任务调度器任务表';
 COMMENT ON COLUMN apscheduler_jobs.id IS '任务标识ID';
-COMMENT ON COLUMN apscheduler_jobs.next_run_time IS '下次执行时间';
+COMMENT ON COLUMN apscheduler_jobs.next_run_time IS '下次执行时间(Unix时间戳)';
 COMMENT ON COLUMN apscheduler_jobs.job_state IS '任务状态数据';
 
 -- ============================================
@@ -184,10 +190,11 @@ COMMENT ON COLUMN apscheduler_jobs.job_state IS '任务状态数据';
 -- 外汇标的基础信息表
 CREATE TABLE IF NOT EXISTS forex_symbols (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(50) NOT NULL,
+    market_id UUID REFERENCES markets(id),
     description TEXT,
-    datasource_id UUID REFERENCES datasources(id),
+    datasource_id UUID REFERENCES datasources(id) ON DELETE SET NULL,
     base_currency VARCHAR(10),
     quote_currency VARCHAR(10),
     is_active BOOLEAN DEFAULT true,
@@ -196,10 +203,15 @@ CREATE TABLE IF NOT EXISTS forex_symbols (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_forex_symbols_code ON forex_symbols(code);
+CREATE INDEX IF NOT EXISTS idx_forex_symbols_market ON forex_symbols(market_id);
+ALTER TABLE forex_symbols ADD CONSTRAINT uq_forex_symbols_code_market UNIQUE (code, market_id);
+
 COMMENT ON TABLE forex_symbols IS '外汇标的基础信息表';
 COMMENT ON COLUMN forex_symbols.id IS '货币对唯一标识ID';
 COMMENT ON COLUMN forex_symbols.code IS '货币对代码（英文）';
 COMMENT ON COLUMN forex_symbols.name IS '货币对名称（中文）';
+COMMENT ON COLUMN forex_symbols.market_id IS '所属市场ID';
 COMMENT ON COLUMN forex_symbols.description IS '货币对描述说明';
 COMMENT ON COLUMN forex_symbols.datasource_id IS '默认数据来源ID';
 COMMENT ON COLUMN forex_symbols.base_currency IS '基础货币';
@@ -213,7 +225,8 @@ COMMENT ON COLUMN forex_symbols.updated_at IS '更新时间';
 CREATE TABLE IF NOT EXISTS forex_daily (
     id UUID DEFAULT uuid_generate_v4(),
     symbol_id UUID NOT NULL REFERENCES forex_symbols(id),
-    datasource_id UUID REFERENCES datasources(id),
+    market_id UUID REFERENCES markets(id),
+    datasource_id UUID REFERENCES datasources(id) ON DELETE SET NULL,
     date DATE NOT NULL,
     open NUMERIC(10, 4),
     high NUMERIC(10, 4),
@@ -225,7 +238,7 @@ CREATE TABLE IF NOT EXISTS forex_daily (
     amplitude NUMERIC(10, 4),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id, date),
-    UNIQUE(symbol_id, date, datasource_id)
+    CONSTRAINT uq_forex_daily_symbol_market_date_ds UNIQUE(symbol_id, market_id, date, datasource_id)
 ) PARTITION BY RANGE (date);
 
 COMMENT ON TABLE forex_daily IS '外汇日线行情数据表（按年分区）';
@@ -395,10 +408,10 @@ ON CONFLICT (code) DO NOTHING;
 -- 插入外汇数据源配置（包含默认配置文件）
 INSERT INTO datasources (name, market_id, interface, description, config_schema, supported_symbols, min_date, type, is_active, config_file, config_version, config_updated_at)
 SELECT
-    'AKShare外汇历史数据',
+    '外汇历史数据',
     m.id,
     'forex_hist',
-    'AKShare外汇历史行情数据接口，提供各货币对的日线OHLC数据',
+    '外汇历史行情数据，支持AKShare动态标的同步',
     '{
         "fields": [
             {"name": "symbol", "label": "货币对", "type": "select", "required": true, "options_source": "supported_symbols"},
@@ -406,62 +419,12 @@ SELECT
             {"name": "end_date", "label": "结束日期", "type": "date", "required": true, "min_value_source": "min_date", "max_value": "today"}
         ]
     }',
-    '["美元人民币", "欧元人民币", "日元人民币", "英镑人民币", "港币人民币", "澳元人民币", "加元人民币", "瑞郎人民币", "新西兰元人民币", "欧元美元", "英镑美元", "美元日元", "澳元美元", "美元加元", "美元瑞郎", "新西兰元美元", "欧元英镑", "欧元日元", "英镑日元", "澳元日元"]',
+    '[]',
     '1994-01-01',
     'akshare',
     true,
-    '{
-  "version": "1.0",
-  "name": "东方财富外汇数据源",
-  "type": "akshare",
-  "market": "forex",
-  "api": {
-    "base_url": "https://push2his.eastmoney.com/api/qt/stock/kline/get",
-    "method": "GET",
-    "timeout": 30,
-    "retry": {"max_attempt": 3, "backoff_factor": 2}
-  },
-  "headers": {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Referer": "https://quote.eastmoney.com/",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
-  },
-  "symbol_mapping": {
-    "USDCNY": "133.USDCNH",
-    "EURCNY": "133.EURCNH",
-    "GBPCNY": "133.GBPCNH",
-    "JPYCNY": "133.CNHJPY",
-    "HKDCNY": "133.CNHHKD",
-    "AUDCNY": "133.AUDCNH",
-    "CADCNY": "133.CADCNH",
-    "CHFCNY": "133.CHFCNH",
-    "NZDCNY": "133.NZDCNH",
-    "EURUSD": "133.EURUSD",
-    "GBPUSD": "133.GBPUSD",
-    "USDJPY": "133.USDJPY",
-    "AUDUSD": "133.AUDUSD",
-    "USDCAD": "133.USDCAD",
-    "USDCHF": "133.USDCHF",
-    "NZDUSD": "133.NZDUSD",
-    "EURGBP": "133.EURGBP",
-    "EURJPY": "133.EURJPY",
-    "GBPJPY": "133.GBPJPY",
-    "AUDJPY": "133.AUDJPY",
-    "USDSGD": "133.USDSGD",
-    "USDHKD": "133.USDHKD"
-  },
-  "data_parser": {
-    "response_root": "data.klines",
-    "date_field": 0,
-    "open_field": 1,
-    "high_field": 2,
-    "low_field": 3,
-    "close_field": 4,
-    "volume_field": 5
-  }
-}',
-    '1.0',
+    '{"name":"外汇数据源","type":"akshare","market":"forex","timeout":30,"version":"2.0","description":"外汇历史行情OHLC数据","symbol_fetch":{"dynamic":true,"interface":"forex_em"},"collector_type":"akshare_native","akshare_interface":"forex_hist"}',
+    '2.0',
     CURRENT_TIMESTAMP
 FROM markets m WHERE m.code = 'forex'
 ON CONFLICT (name) DO NOTHING;
@@ -498,7 +461,7 @@ ON CONFLICT (code) DO NOTHING;
 -- 期货品种基础信息表
 CREATE TABLE IF NOT EXISTS futures_varieties (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     exchange VARCHAR(20) NOT NULL,
     market_id UUID REFERENCES markets(id),
@@ -513,6 +476,9 @@ CREATE TABLE IF NOT EXISTS futures_varieties (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_futures_varieties_code ON futures_varieties(code);
+ALTER TABLE futures_varieties ADD CONSTRAINT uq_futures_varieties_code_market UNIQUE (code, market_id);
 
 COMMENT ON TABLE futures_varieties IS '期货品种基础信息表';
 COMMENT ON COLUMN futures_varieties.id IS '品种唯一标识ID';
@@ -547,7 +513,7 @@ CREATE TABLE IF NOT EXISTS futures_contracts (
     main_start_date DATE,
     main_end_date DATE,
     open_interest NUMERIC(20, 0) DEFAULT 0,
-    datasource_id UUID REFERENCES datasources(id),
+    datasource_id UUID REFERENCES datasources(id) ON DELETE SET NULL,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -578,7 +544,8 @@ CREATE TABLE IF NOT EXISTS futures_daily (
     id UUID DEFAULT uuid_generate_v4(),
     contract_id UUID NOT NULL REFERENCES futures_contracts(id),
     variety_id UUID NOT NULL REFERENCES futures_varieties(id),
-    datasource_id UUID REFERENCES datasources(id),
+    market_id UUID REFERENCES markets(id),
+    datasource_id UUID REFERENCES datasources(id) ON DELETE SET NULL,
     date DATE NOT NULL,
     open NUMERIC(10, 4),
     high NUMERIC(10, 4),
@@ -596,7 +563,7 @@ CREATE TABLE IF NOT EXISTS futures_daily (
     adjusted_price NUMERIC(10, 4),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id, date),
-    UNIQUE(contract_id, date, datasource_id)
+    CONSTRAINT uq_futures_daily_contract_market_date_ds UNIQUE(contract_id, market_id, date, datasource_id)
 ) PARTITION BY RANGE (date);
 
 COMMENT ON TABLE futures_daily IS '期货日线行情数据表（按年分区）';
@@ -700,14 +667,15 @@ ON CONFLICT (code) DO NOTHING;
 -- 股票标的基础信息表（支持A股/美股/港股共享）
 CREATE TABLE IF NOT EXISTS stock_symbols (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     market_id UUID REFERENCES markets(id),
     exchange VARCHAR(20),
     industry VARCHAR(50),
     listing_date DATE,
-    datasource_id UUID REFERENCES datasources(id),
+    datasource_id UUID REFERENCES datasources(id) ON DELETE SET NULL,
     is_active BOOLEAN DEFAULT true,
+    description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -722,15 +690,20 @@ COMMENT ON COLUMN stock_symbols.industry IS '所属行业';
 COMMENT ON COLUMN stock_symbols.listing_date IS '上市日期';
 COMMENT ON COLUMN stock_symbols.datasource_id IS '数据来源ID';
 COMMENT ON COLUMN stock_symbols.is_active IS '是否启用';
+COMMENT ON COLUMN stock_symbols.description IS '股票描述';
 COMMENT ON COLUMN stock_symbols.created_at IS '创建时间';
 COMMENT ON COLUMN stock_symbols.updated_at IS '更新时间';
+
+-- 索引和组合唯一约束
+CREATE INDEX IF NOT EXISTS idx_stock_symbols_code ON stock_symbols(code);
+ALTER TABLE stock_symbols ADD CONSTRAINT uq_stock_symbols_code_market UNIQUE (code, market_id);
 
 -- 股票日线行情表（分区表）
 CREATE TABLE IF NOT EXISTS stock_daily (
     id UUID DEFAULT uuid_generate_v4(),
     symbol_id UUID NOT NULL REFERENCES stock_symbols(id),
     market_id UUID NOT NULL REFERENCES markets(id),
-    datasource_id UUID REFERENCES datasources(id),
+    datasource_id UUID REFERENCES datasources(id) ON DELETE SET NULL,
     date DATE NOT NULL,
     open NUMERIC(10, 4),
     high NUMERIC(10, 4),
@@ -746,7 +719,7 @@ CREATE TABLE IF NOT EXISTS stock_daily (
     is_st BOOLEAN DEFAULT false,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id, date),
-    UNIQUE(symbol_id, market_id, date, datasource_id)
+    CONSTRAINT stock_daily_symbol_id_market_id_date_datasource_id_key UNIQUE(symbol_id, market_id, date, datasource_id)
 ) PARTITION BY RANGE (date);
 
 COMMENT ON TABLE stock_daily IS '股票日线行情数据表（按年分区，支持A股/美股/港股）';
@@ -789,7 +762,7 @@ CREATE TABLE IF NOT EXISTS stock_daily_default PARTITION OF stock_daily
 -- 债券标的基础信息表（支持国内/国际债券共享）
 CREATE TABLE IF NOT EXISTS bond_symbols (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code VARCHAR(20) UNIQUE NOT NULL,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     market_id UUID REFERENCES markets(id),
     bond_type VARCHAR(20) NOT NULL,
@@ -799,11 +772,15 @@ CREATE TABLE IF NOT EXISTS bond_symbols (
     face_value NUMERIC(12, 2),
     currency VARCHAR(10) DEFAULT 'CNY',
     rating VARCHAR(10),
-    datasource_id UUID REFERENCES datasources(id),
+    datasource_id UUID REFERENCES datasources(id) ON DELETE SET NULL,
     is_active BOOLEAN DEFAULT true,
+    description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_bond_symbols_code ON bond_symbols(code);
+ALTER TABLE bond_symbols ADD CONSTRAINT uq_bond_symbols_code_market UNIQUE (code, market_id);
 
 COMMENT ON TABLE bond_symbols IS '债券标的基础信息表（支持国内/国际债券）';
 COMMENT ON COLUMN bond_symbols.id IS '债券唯一标识ID';
@@ -819,6 +796,7 @@ COMMENT ON COLUMN bond_symbols.currency IS '币种';
 COMMENT ON COLUMN bond_symbols.rating IS '信用评级';
 COMMENT ON COLUMN bond_symbols.datasource_id IS '数据来源ID';
 COMMENT ON COLUMN bond_symbols.is_active IS '是否启用';
+COMMENT ON COLUMN bond_symbols.description IS '债券描述';
 COMMENT ON COLUMN bond_symbols.created_at IS '创建时间';
 COMMENT ON COLUMN bond_symbols.updated_at IS '更新时间';
 
@@ -828,7 +806,7 @@ CREATE TABLE IF NOT EXISTS bond_daily (
     id UUID DEFAULT uuid_generate_v4(),
     symbol_id UUID NOT NULL REFERENCES bond_symbols(id),
     market_id UUID NOT NULL REFERENCES markets(id),
-    datasource_id UUID REFERENCES datasources(id),
+    datasource_id UUID REFERENCES datasources(id) ON DELETE SET NULL,
     date DATE NOT NULL,
     open NUMERIC(18, 4),
     high NUMERIC(18, 4),
@@ -843,7 +821,8 @@ CREATE TABLE IF NOT EXISTS bond_daily (
     duration NUMERIC(10, 4),
     convexity NUMERIC(10, 4),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (symbol_id, date, id)
+    PRIMARY KEY (symbol_id, date, id),
+    CONSTRAINT uq_bond_daily_symbol_market_date_ds UNIQUE(symbol_id, market_id, date, datasource_id)
 ) PARTITION BY RANGE (date);
 
 COMMENT ON TABLE bond_daily IS '债券日线行情数据表（按年分区，含收益率）';
@@ -916,7 +895,7 @@ CREATE INDEX IF NOT EXISTS idx_bond_daily_datasource ON bond_daily(datasource_id
 -- 插入A股数据源配置
 INSERT INTO datasources (name, market_id, interface, description, config_schema, supported_symbols, min_date, type, is_active, config_file, config_version, config_updated_at)
 SELECT
-    'AKShare A股历史数据',
+    'A股历史数据',
     m.id,
     'stock_zh_a_hist',
     'AKShare A股历史行情数据接口，提供各股票的日线OHLC数据',
@@ -960,7 +939,7 @@ ON CONFLICT (name) DO NOTHING;
 -- 插入美股数据源配置
 INSERT INTO datasources (name, market_id, interface, description, config_schema, supported_symbols, min_date, type, is_active, config_file, config_version, config_updated_at)
 SELECT
-    'AKShare 美股历史数据',
+    '美股历史数据',
     m.id,
     'stock_us_daily',
     'AKShare 美股历史行情数据接口',
@@ -995,7 +974,7 @@ ON CONFLICT (name) DO NOTHING;
 -- 插入港股数据源配置
 INSERT INTO datasources (name, market_id, interface, description, config_schema, supported_symbols, min_date, type, is_active, config_file, config_version, config_updated_at)
 SELECT
-    'AKShare 港股历史数据',
+    '港股历史数据',
     m.id,
     'stock_hk_daily',
     'AKShare 港股历史行情数据接口',
@@ -1029,10 +1008,10 @@ ON CONFLICT (name) DO NOTHING;
 -- 插入期货数据源配置
 INSERT INTO datasources (name, market_id, interface, description, config_schema, supported_symbols, min_date, type, is_active, config_file, config_version, config_updated_at)
 SELECT
-    'AKShare 国内期货历史数据',
+    '国内期货历史数据',
     m.id,
     'futures_zh_daily_sina',
-    'AKShare 国内期货历史行情数据接口',
+    '国内期货历史行情数据，支持AKShare动态标的同步',
     '{
         "fields": [
             {"name": "symbol", "label": "期货代码", "type": "select", "required": true, "options_source": "supported_symbols"},
@@ -1044,18 +1023,8 @@ SELECT
     '1990-01-01',
     'akshare',
     true,
-    '{
-  "version": "1.0",
-  "name": "AKShare 期货数据源",
-  "type": "akshare",
-  "market": "futures_cn",
-  "collector_type": "akshare_native",
-  "akshare_interface": "futures_zh_daily_sina",
-  "akshare_params": {
-    "symbol": "IF9999"
-  }
-}',
-    '1.0',
+    '{"name":"期货数据源","type":"akshare","market":"futures_cn","timeout":30,"version":"2.0","description":"国内期货历史行情OHLC数据","symbol_fetch":{"dynamic":true,"interface":"futures_zh_spot_em"},"collector_type":"akshare_native","akshare_interface":"futures_zh_daily_sina"}',
+    '2.0',
     CURRENT_TIMESTAMP
 FROM markets m WHERE m.code = 'futures_cn'
 ON CONFLICT (name) DO NOTHING;
@@ -1063,10 +1032,10 @@ ON CONFLICT (name) DO NOTHING;
 -- 插入国内债券数据源配置
 INSERT INTO datasources (name, market_id, interface, description, config_schema, supported_symbols, min_date, type, is_active, config_file, config_version, config_updated_at)
 SELECT
-    'AKShare 国内债券历史数据',
+    '国内债券历史数据',
     m.id,
-    'bond_cn_daily',
-    'AKShare 国内债券历史行情数据接口',
+    'bond_gb_zh_sina',
+    '中国国债收益率历史数据(OHLC)，新浪财经源',
     '{
         "fields": [
             {"name": "symbol", "label": "债券代码", "type": "select", "required": true, "options_source": "supported_symbols"},
@@ -1078,18 +1047,8 @@ SELECT
     '1990-01-01',
     'akshare',
     true,
-    '{
-  "version": "1.0",
-  "name": "AKShare 国内债券数据源",
-  "type": "akshare",
-  "market": "bond_cn",
-  "collector_type": "akshare_native",
-  "akshare_interface": "bond_cn_daily",
-  "akshare_params": {
-    "symbol": "113052"
-  }
-}',
-    '1.0',
+    '{"name":"中国国债收益率","type":"akshare","market":"bond_cn","timeout":30,"version":"2.0","description":"中国国债收益率曲线OHLC数据(新浪源)","symbol_fetch":{"dynamic":false,"interface":"bond_gb_zh_sina"},"collector_type":"akshare_native","akshare_interface":"bond_gb_zh_sina"}',
+    '2.0',
     CURRENT_TIMESTAMP
 FROM markets m WHERE m.code = 'bond_cn'
 ON CONFLICT (name) DO NOTHING;
@@ -1099,8 +1058,8 @@ INSERT INTO datasources (name, market_id, interface, description, config_schema,
 SELECT
     'AKShare 美国债券历史数据',
     m.id,
-    'bond_us_daily',
-    'AKShare 美国债券历史行情数据接口',
+    'bond_gb_us_sina',
+    '美国国债收益率历史数据(OHLC)，新浪财经源',
     '{
         "fields": [
             {"name": "symbol", "label": "债券代码", "type": "select", "required": true, "options_source": "supported_symbols"},
@@ -1112,18 +1071,7 @@ SELECT
     '1990-01-01',
     'akshare',
     true,
-    '{
-  "version": "1.0",
-  "name": "AKShare 美国债���数据源",
-  "type": "akshare",
-  "market": "bond_us",
-  "collector_type": "akshare_native",
-  "akshare_interface": "bond_us_daily",
-  "akshare_params": {
-    "symbol": "US10Y"
-  }
-}',
-    '1.0',
+    '{"name":"美国债券历史数据","type":"akshare","market":"bond_us","timeout":30,"version":"2.0","description":"美国国债收益率曲线OHLC数据(新浪源)","symbol_fetch":{"dynamic":false,"interface":"bond_gb_us_sina"},"collector_type":"akshare_native","akshare_interface":"bond_gb_us_sina"}',
     CURRENT_TIMESTAMP
 FROM markets m WHERE m.code = 'bond_us'
 ON CONFLICT (name) DO NOTHING;

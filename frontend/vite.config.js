@@ -29,6 +29,7 @@ export default defineConfig({
           'vendor-element-plus': ['element-plus'],
           'vendor-echarts': ['echarts'],
           'vendor-vue': ['vue', 'vue-router', 'pinia'],
+          'vendor-klinecharts': ['klinecharts'],
         },
       },
     },

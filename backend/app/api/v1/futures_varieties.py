@@ -33,6 +33,7 @@ router = APIRouter(prefix="/futures-varieties")
 
 @router.get("/", response_model=Response)
 async def list_futures_varieties(
+    market_id: Optional[UUID] = Query(None, description="市场ID过滤"),
     active_only: bool = Query(True, description="是否只返回启用的品种"),
     search: Optional[str] = Query(None, description="搜索代码或名称"),
     db: AsyncSession = Depends(get_db),
@@ -44,6 +45,9 @@ async def list_futures_varieties(
     仅admin可访问.
     """
     query = select(FuturesVariety)
+
+    if market_id:
+        query = query.where(FuturesVariety.market_id == market_id)
 
     if active_only:
         query = query.where(FuturesVariety.is_active == True)

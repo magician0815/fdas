@@ -63,6 +63,16 @@ class FuturesDailyService:
             logger.error(f"期货合约不存在: {contract_id}")
             return 0
 
+        # 通过品种获取 market_id
+        market_id = None
+        if contract.variety_id:
+            variety_result = await db.execute(
+                select(FuturesVariety).where(FuturesVariety.id == contract.variety_id)
+            )
+            variety = variety_result.scalar_one_or_none()
+            if variety:
+                market_id = variety.market_id
+
         if not end_date:
             end_date = DateType.today()
         if not start_date:
@@ -98,6 +108,7 @@ class FuturesDailyService:
             cleaned_record = {k: v for k, v in record.items() if k in allowed_fields}
             cleaned_record["contract_id"] = contract_id
             cleaned_record["variety_id"] = contract.variety_id
+            cleaned_record["market_id"] = market_id
             if datasource_id:
                 cleaned_record["datasource_id"] = datasource_id
             cleaned_records.append(cleaned_record)
@@ -162,6 +173,7 @@ class FuturesDailyService:
         variety_id: Optional[UUID] = None,
         start_date: Optional[DateType] = None,
         end_date: Optional[DateType] = None,
+        is_main_data: Optional[bool] = None,
         limit: Optional[int] = None,
     ) -> List[FuturesDaily]:
         """
@@ -192,6 +204,8 @@ class FuturesDailyService:
             conditions.append(FuturesDaily.date >= start_date)
         if end_date:
             conditions.append(FuturesDaily.date <= end_date)
+        if is_main_data is not None:
+            conditions.append(FuturesDaily.is_main_data == is_main_data)
 
         if conditions:
             query = query.where(and_(*conditions))
@@ -223,7 +237,7 @@ class FuturesDailyService:
         for record in data:
             stmt = insert(FuturesDaily).values(**record)
             stmt = stmt.on_conflict_do_update(
-                constraint="uq_futures_daily_contract_date_datasource",
+                constraint="uq_futures_daily_contract_market_date_ds",
                 set_={
                     "open": stmt.excluded.open,
                     "high": stmt.excluded.high,

@@ -9,7 +9,8 @@
       @export-image="handleExportImage"
     />
 
-    <div :id="chartContainerId" class="klinechart-container" ref="chartContainerRef" />
+    <div v-if="errorMsg" class="chart-error">{{ errorMsg }}</div>
+    <div v-else :id="chartContainerId" class="klinechart-container" :class="{ dark: theme === 'dark' }" ref="chartContainerRef" />
 
     <RangeStatsPanel
       v-if="rangeStats"
@@ -48,6 +49,7 @@ import { useKeyboardNav } from '@/composables/useKeyboardNav'
 import { lightStyles, darkStyles } from '@/chartExtensions/themes'
 import ChartToolbar from './ChartToolbar.vue'
 import RangeStatsPanel from './RangeStatsPanel.vue'
+import logger from '@/services/logger'
 
 if (getMarketProfile('stock_cn') === undefined) registerMarketPresets()
 
@@ -63,13 +65,15 @@ const emit = defineEmits<{
 
 const themeStore = useThemeStore()
 const chartContainerRef = ref<HTMLElement | null>(null)
-const chartContainerId = `kc-${Math.random().toString(36).slice(2, 6)}`
-const theme = ref(themeStore.theme)
+const chartContainerId = `kc-${crypto.randomUUID().slice(0, 6)}`
+const theme = computed(() => themeStore.theme)
 const adjustmentType = ref<AdjustmentType>('none')
 const logScale = ref(false)
 const rangeStats = ref<any>(null)
 const chartRef = ref<Chart | null>(null)
+const errorMsg = ref('')
 
+// chartRef.value 为权威引用，chart 别名仅供内部便捷访问，两者必须同步
 let chart: Chart | null = null
 
 const profile = computed<MarketProfile>(() =>
@@ -83,42 +87,56 @@ const currentStyles = computed<Styles>(() =>
 // === init ===
 
 function initChart(): void {
-  if (!chartContainerRef.value) return
+  if (!chartContainerRef.value) { errorMsg.value = '容器DOM未就绪'; return }
   const p = profile.value
   const dom = chartContainerRef.value
-  if (chart) { dispose(dom); chart = null }
+  if (chart) { dispose(dom); chart = null; chartRef.value = null }
 
   chart = init(dom, { styles: currentStyles.value, locale: 'zh-CN' })
-  if (!chart) return
+  if (!chart) { errorMsg.value = 'KLineChart init() 返回 null (容器尺寸: '+dom.offsetWidth+'x'+dom.offsetHeight+')'; return }
 
-  chart.setPrecision(p.pricePrecision)
+  chart.setSymbol({ ticker: props.symbolCode || 'UNKNOWN', pricePrecision: p.pricePrecision, volumePrecision: 0 })
+  chart.setPeriod({ type: 'day', span: 1 })
   chart.setOffsetRightDistance(p.features.continuousTrading ? 80 : 50)
   chartRef.value = chart
 
   if (props.data?.length) {
-    chart.applyNewData(convertToKLineData(props.data, p, { adjustmentType: adjustmentType.value }))
+    setChartData(props.data, p)
   }
 
-  // 默认指标
+  // 默认指标 (v10: MA叠加主图, MACD用短参数适配小数据量)
   for (const ind of p.defaultIndicators) {
-    if (ind === 'MA') {
-      chart.createIndicator('MA', { isStack: true, pane: { id: 'candle_pane' } })
-    } else {
-      try { chart.createIndicator(ind) } catch { /* 自定义指标可能未注册 */ }
-    }
+    try {
+      if (ind === 'MA') {
+        chart.createIndicator({ name: 'MA', paneId: 'candle_pane' })
+      } else if (ind === 'MACD') {
+        chart.createIndicator('MACD')
+        chart.overrideIndicator({ name: 'MACD', styles: { bars: [{ style: 'fill' }] } })
+      } else {
+        chart.createIndicator(ind)
+      }
+    } catch { /* ignore */ }
   }
 
   applyFeatures(p)
 
-  chart.subscribeAction('onCrosshairChange', () => {})
-  chart.subscribeAction('onZoom', () => {})
 
   watch(() => props.data, (newData) => {
     if (newData?.length && chart) {
-      chart.applyNewData(convertToKLineData(newData, p, { adjustmentType: adjustmentType.value }))
+      setChartData(newData, p)
       applyFeatures(p)
     }
   }, { deep: true })
+}
+
+/** v10: 通过 setDataLoader + resetData 注入数据 */
+function setChartData(data: any[], p: MarketProfile): void {
+  if (!chart) return
+  const klineData = convertToKLineData(data, p, { adjustmentType: adjustmentType.value })
+  chart.setDataLoader({
+    getBars: ({ callback }) => callback(klineData, { forward: false })
+  })
+  chart.resetData()
 }
 
 // === 市场特性 ===
@@ -139,7 +157,7 @@ function addLimitUpDown(data: any[]): void {
   const prevClose = Number(data[data.length - 1].close)
   const t = getLimitThreshold(p, props.symbolCode, props.symbolName)
   if (t <= 0) return
-  chart.addOverlay({
+  chart.createOverlay({
     name: 'limitUpDown',
     extendData: {
       limitUpPrice: +(prevClose * (1 + t / 100)).toFixed(p.pricePrecision),
@@ -159,7 +177,7 @@ function addGaps(data: any[]): void {
     if (cl > ph) gaps.push({ x: i, y: ph, type: 'up', label: `+${((cl - ph) / ph * 100).toFixed(1)}%` })
     else if (ch < pl) gaps.push({ x: i, y: pl, type: 'down', label: `-${((pl - ch) / pl * 100).toFixed(1)}%` })
   }
-  if (gaps.length) chart.addOverlay({ name: 'gapMarker', extendData: { gaps }, points: [] })
+  if (gaps.length) chart.createOverlay({ name: 'gapMarker', extendData: { gaps }, points: [] })
 }
 
 function addSuspension(data: any[]): void {
@@ -173,10 +191,11 @@ function addSuspension(data: any[]): void {
       new Date(sorted[i - 1].date || sorted[i - 1].timestamp).getTime()) / 86400000)
     if (diff > 7) marks.push({ start: i - 1, end: i, days: diff, label: `停牌${diff}天` })
   }
-  if (marks.length) chart.addOverlay({ name: 'simpleTag', extendData: { marks }, points: [] })
+  if (marks.length) chart.createOverlay({ name: 'simpleTag', extendData: { marks }, points: [] })
 }
 
 function addDividends(data: any[]): void {
+  // 基于 >5% 跳空启发式检测除权事件，非真实除权数据，后续需对接除权因子 API
   if (!chart) return
   const divs: any[] = []
   for (let i = 1; i < data.length; i++) {
@@ -186,7 +205,7 @@ function addDividends(data: any[]): void {
       divs.push({ x: 0, y: coord?.price ?? pc, label: 'DR', date: data[i].date || data[i].timestamp })
     }
   }
-  if (divs.length) chart.addOverlay({ name: 'dividendMarker', extendData: { dividends: divs }, points: [] })
+  if (divs.length) chart.createOverlay({ name: 'dividendMarker', extendData: { dividends: divs }, points: [] })
 }
 
 // === 交互 ===
@@ -203,9 +222,9 @@ function toggleLogScale(): void {
       low: +d.low > 0 ? Math.log10(+d.low) : d.low,
       close: +d.close > 0 ? Math.log10(+d.close) : d.close,
     }))
-    chart.applyNewData(convertToKLineData(logData, p, { adjustmentType: adjustmentType.value }))
+    setChartData(logData, p)
   } else {
-    chart.applyNewData(convertToKLineData(raw, p, { adjustmentType: adjustmentType.value }))
+    setChartData(raw, p)
   }
   applyFeatures(p)
 }
@@ -217,32 +236,45 @@ function handleAdjustmentChange(type: AdjustmentType): void {
 
 function handleThemeToggle(): void {
   themeStore.toggleTheme()
-  theme.value = themeStore.theme
   if (chart) chart.setStyles(currentStyles.value)
 }
 
 function handleExportImage(): void {
   if (!chart) return
-  const canvas = (chart as any).getCanvas?.()
-  if (!canvas) return
+  const url = chart.getConvertPictureUrl(true, 'png')
+  if (!url) return
   const a = document.createElement('a')
-  a.href = canvas.toDataURL('image/png')
+  a.href = url
   a.download = `${props.symbolCode}_${new Date().toISOString().slice(0, 10)}.png`
   a.click()
 }
 
 useKeyboardNav(() => chart)
 
-onMounted(async () => { await nextTick(); initChart() })
-onUnmounted(() => { if (chart && chartContainerRef.value) { dispose(chartContainerRef.value); chart = null } })
+// 监听全局主题变化（Navbar触发时同步图表样式）
+watch(currentStyles, (styles) => {
+  if (chart) chart.setStyles(styles)
+})
+
+onMounted(async () => {
+  await nextTick()
+  try { initChart() } catch (e: any) {
+    errorMsg.value = 'KLineChart 初始化失败: ' + (e?.message || String(e))
+    logger.error('ChartDashboard初始化失败', e)
+  }
+})
+onUnmounted(() => { if (chart && chartContainerRef.value) { dispose(chartContainerRef.value); chart = null; chartRef.value = null } })
 </script>
 
 <style scoped>
 .chart-dashboard {
   display: flex; flex-direction: column; height: 100%; min-height: 400px;
-  background: var(--chart-bg, #ffffff);
+  background: #ffffff;
 }
-.klinechart-container { flex: 1; min-height: 300px; width: 100%; }
+.chart-dashboard:has(.klinechart-container.dark) { background: #1a1a2e; }
+.klinechart-container { flex: 1; min-height: 300px; width: 100%; background: #ffffff; }
+.klinechart-container.dark { background: #1a1a2e; }
+.chart-error { flex: 1; min-height: 300px; display:flex; align-items:center; justify-content:center; color:#ef4444; font-size:14px; padding:20px; text-align:center; }
 .feature-controls { display: flex; justify-content: center; gap: 8px; padding: 6px; border-top: 1px solid var(--border-color, #e5e7eb); flex-wrap: wrap; }
 .control-row { display: flex; align-items: center; }
 </style>

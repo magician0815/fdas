@@ -7,7 +7,7 @@ Author: FDAS Team
 Created: 2026-04-10
 """
 
-from sqlalchemy import Column, String, Boolean, DateTime, Date, Text, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Date, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
 import uuid
@@ -37,8 +37,9 @@ class ForexSymbol(Base):
     __tablename__ = "forex_symbols"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="货币对唯一标识ID")
-    code = Column(String(20), unique=True, nullable=False, index=True, comment="货币对代码（英文）")
+    code = Column(String(20), nullable=False, index=True, comment="货币对代码（英文）")
     name = Column(String(50), nullable=False, comment="货币对名称（中文）")
+    market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=True, index=True, comment="所属市场ID")
     description = Column(Text, comment="货币对描述说明")
     datasource_id = Column(UUID(as_uuid=True), ForeignKey("datasources.id"), index=True, comment="默认数据来源ID")
     base_currency = Column(String(10), comment="基础货币")
@@ -47,3 +48,7 @@ class ForexSymbol(Base):
     first_trade_date = Column(Date, comment="首次交易日期")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")
+
+    __table_args__ = (
+        UniqueConstraint("code", "market_id", name="uq_forex_symbols_code_market"),
+    )

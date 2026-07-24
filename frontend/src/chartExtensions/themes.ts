@@ -47,6 +47,7 @@ const lightStyles: Styles = {
     },
   },
   indicator: {
+    bars: [{ upColor: '#ef4444', downColor: '#22c55e', noChangeColor: '#999999' }],
     tooltip: {
       showRule: 'follow_cross',
       showType: 'standard',
@@ -136,6 +137,7 @@ const darkStyles: Styles = {
     },
   },
   indicator: {
+    bars: [{ upColor: '#ff4d4f', downColor: '#52c41a', noChangeColor: '#666666' }],
     tooltip: {
       showRule: 'follow_cross',
       showType: 'standard',

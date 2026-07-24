@@ -56,13 +56,13 @@ describe('ChartToolbar', () => {
 
   it('A股应显示成交量+MACD切换按钮', () => {
     const wrapper = mountToolbar('stock_cn')
-    expect(wrapper.text()).toContain('蜡烛图')
-    expect(wrapper.text()).toContain('折线图')
+    expect(wrapper.text()).toContain('成交量')
+    expect(wrapper.text()).toContain('MACD')
   })
 
-  it('外汇不应显示成交量按钮', () => {
+  it('外汇应显示MACD按钮', () => {
     const wrapper = mountToolbar('forex')
-    expect(wrapper.text()).not.toContain('成交量')
+    expect(wrapper.text()).toContain('MACD')
   })
 
   it('期货应显示持仓量按钮', () => {

@@ -20,6 +20,7 @@
 | **异步优先** | 提升并发性能 | FastAPI async + SQLAlchemy async |
 | **容器化** | 简化部署运维 | Docker Compose编排 |
 | **可扩展** | 预留扩展接口 | 插件式模块设计 |
+| **市场统一** | 多市场共用一套K线方案 | MarketProfile声明式差异化配置 (v2.5.0) |
 | **用户个性化** | 用户配置持久化 | user_chart_settings表存储用户偏好 |
 
 ### 1.2 六层架构图
@@ -35,7 +36,8 @@
 │                          ↕ API调用                               │
 ├─────────────────────────────────────────────────────────────────┤
 │                     第五层：前端展示层                            │
-│  Vue 3 + Element Plus + ECharts + Pinia + Vite                  │
+│  Vue 3 + KLineChart v10(Canvas) + ECharts(Dashboard) + Pinia    │
+│  统一K线方案: MarketProfile → ChartDashboard → KLineChart        │
 │                          ↕ RESTful API                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                     第四层：后端服务层                            │
@@ -245,8 +247,58 @@ volumes:
 | 时间分区优化 | 大表使用PostgreSQL原生分区，按时间范围分片 |
 | 数据来源追踪 | 行情表记录datasource_id，支持同一标的多数据源 |
 | 更新时间追踪 | 行情表记录updated_at，知道数据何时被更新 |
+| 跨市场唯一约束 | 标的表使用 `(code, market_id)` 组合唯一约束，行情表使用 `(symbol_id, market_id, date, datasource_id)` |
 
-### 4.2 表命名规范
+### 4.2 跨市场约束规范 (v2.5.1)
+
+**核心规则**：所有标的表和行情表的唯一约束必须包含 `market_id` 字段。
+
+**标的表**：
+- 唯一约束: `UNIQUE(code, market_id)` — 不同市场可有相同代码的标的
+- 索引: `(code)` 单列 + `(market_id)` 单列
+- 查询/去重: 必须同时匹配 `code` 和 `market_id`
+
+**日线表**：
+- 唯一约束: `UNIQUE(symbol_id, market_id, date, datasource_id)`
+- 索引: `(market_id, date DESC)` 支持按市场查询和分区裁剪
+
+**原因**：系统支持 7 个市场共享同张标的表（如 `stock_symbols` 同时存储 A 股/港股/美股），不同市场存在代码重叠（如港股 `00001` vs A 股 `000001`）。`market_id` 确保跨市场数据隔离和正确去重。
+
+### 4.3 数据源标的动态获取 (v2.5.1)
+
+**核心规则**：所有数据源必须通过 `symbol_fetch` 配置声明标的获取方式，禁止在 config_file 中硬编码标的列表或标的映射。
+
+**配置规范**：
+
+```json
+{
+  "symbol_fetch": {
+    "interface": "forex_em",
+    "dynamic": true
+  }
+}
+```
+
+- `interface`: 采集器中对应的标的获取方法标识（如 `forex_em`、`stock_zh_a_spot_em`、`bond_gb_zh_sina`）
+- `dynamic`: `true` 表示从 API 动态获取，`false` 表示使用预定义固定列表
+
+**同步流程**：前端触发"同步金融标的" → `datasources.py` 读取 `config_file.symbol_fetch` → `collector.fetch_symbols_by_config()` 分派到对应方法 → 返回标的列表写入数据库。
+
+**采集流程**：采集器代码翻译（如外汇的 `symbol_market_map`）应优先使用 AKShare 自身提供的映射表，config_file 中的映射仅作为覆盖项，不再作为主数据源。
+
+**各数据源 symbol_fetch 配置**：
+
+| 数据源 | interface | dynamic | 标的来源 |
+|--------|-----------|:------:|------|
+| 外汇 | `forex_em` | true | `forex_em.symbol_market_map` 190 货币对 |
+| A股 | `stock_zh_a_spot_em` | true | `ak.stock_zh_a_spot_em` 全量 A 股 |
+| 港股 | `stock_hk_spot_em` | true | `ak.stock_hk_spot` 全量港股 |
+| 美股 | `stock_us_spot_em` | true | `ak.get_us_stock_name`（60s 超时回退默认列表） |
+| 期货 | `futures_zh_spot_em` | true | 各交易所合约信息 |
+| 国内债券 | `bond_gb_zh_sina` | false | 固定 7 个期限（1Y-30Y） |
+| 美国债券 | `bond_gb_us_sina` | false | 固定 13 个期限（1M-30Y） |
+
+### 4.4 表命名规范
 
 ```
 {市场}_{数据类型}
@@ -638,18 +690,27 @@ frontend/src/
 │   └── guards.js           # 路由守卫
 ├── stores/                 # Pinia状态管理
 │   ├── auth.js             # 认证状态
-│   └── fx_data.js          # 汇率数据状态
+│   ├── theme.js            # 主题状态
+│   ├── chart.ts            # 图表状态
+│   └── preferences.ts      # 用户偏好
 ├── api/                    # API调用
 │   ├── index.js            # Axios配置
-│   ├── auth.js             # 认证API
-│   ├── users.js            # 用户API
 │   ├── fx_data.js          # 汇率API
-│   ├── datasource.js       # 数据源API
-│   └── collection.js       # 采集任务API
+│   ├── stock_data.js       # 股票API
+│   ├── futures_data.js     # 期货API
+│   ├── bond_data.js        # 债券API
+│   ├── markets.js          # 市场类型API
+│   ├── datasources.js      # 数据源API
+│   ├── collection.js       # 采集任务API
+│   ├── stock_symbols.js    # 股票标的API
+│   ├── forex_symbols.js    # 外汇标的API
+│   ├── futures_varieties.js # 期货品种API
+│   ├── bond_symbols.js     # 债券标的API
+│   └── chart_settings.js   # 图表设置API
 ├── views/                  # 页面组件
 │   ├── Login.vue           # 登录页
 │   ├── Dashboard.vue       # 首页
-│   ├── FXData.vue          # 数据分析页
+│   ├── MarketOverview.vue  # 统一行情数据页(跨市场搜索)
 │   ├── DataSource.vue      # 数据源管理
 │   ├── Collection.vue      # 采集任务管理
 │   ├── Users.vue           # 用户管理
@@ -657,15 +718,29 @@ frontend/src/
 ├── components/             # 公共组件
 │   ├── Navbar.vue          # 导航栏
 │   ├── Sidebar.vue         # 侧边栏菜单
-│   ├── FXChart.vue         # ECharts图表封装
 │   ├── CronBuilder.vue     # 可视化cron配置
-│   ├── DataTable.vue       # 数据表格
-│   └── Pagination.vue      # 分页组件
+│   ├── DateRangeSelector.vue # 日期范围选择器
+│   ├── ErrorBoundary.vue   # 错误边界
+│   ├── HelpButton.vue      # 帮助按钮
+│   ├── HelpSection.vue     # 帮助内容
+│   ├── Layout.vue          # 布局组件
+│   ├── ParamValidator.vue  # 参数校验器
+│   └── charts/             # 图表组件
+│       ├── ChartDashboard.vue # KLineChart图表容器
+│       ├── ChartToolbar.vue   # 图表工具栏
+│       ├── MultiPeriodLayout.vue # 多周期布局
+│       └── RangeStatsPanel.vue   # 区间统计面板
+├── composables/            # 组合式函数
+│   ├── useMarketProfile.ts # 市场画像配置中心
+│   ├── useKLineChart.ts    # KLineChart实例管理
+│   ├── useDataLoader.ts    # 数据转换管道
+│   └── useKeyboardNav.ts   # 键盘快捷键
+├── chartExtensions/        # KLineChart自定义扩展
 ├── styles/                 # 样式
 │   ├── index.css           # 全局样式
 │   └── variables.css       # CSS变量
 └── utils/                  # 工具函数
-    ├── chart.js            # 图表配置
+    ├── chartConfig.ts      # 图表配置
     ├── format.js           # 数据格式化
     ├── permission.js       # 权限检查
     └── cron.js             # cron解析
@@ -709,7 +784,7 @@ const menuItems = computed(() => {
   const isAdmin = authStore.user?.role === 'admin'
 
   return [
-    { path: '/fx-data', title: '数据分析', show: true },
+    { path: '/market-overview', title: '行情数据', show: true },
     { path: '/datasource', title: '数据源管理', show: isAdmin },
     { path: '/collection', title: '采集任务', show: isAdmin },
     { path: '/users', title: '用户管理', show: isAdmin },
@@ -718,33 +793,38 @@ const menuItems = computed(() => {
 })
 ```
 
-### 6.4 ECharts图表配置
+### 6.4 KLineChart 图表渲染 (v2.5.0+)
 
-```javascript
-// frontend/src/utils/chart.js
-export const klineOption = (data, maData, macdData) => ({
-  title: { text: 'USDCNH汇率走势' },
-  tooltip: { trigger: 'axis' },
-  legend: { data: ['K线', 'MA20', 'MACD'] },
-  grid: [
-    { left: '10%', right: '8%', height: '50%' },  // K线图
-    { left: '10%', right: '8%', top: '65%', height: '20%' },  // MACD图
-  ],
-  xAxis: [
-    { type: 'category', data: data.dates, gridIndex: 0 },
-    { type: 'category', data: data.dates, gridIndex: 1 },
-  ],
-  yAxis: [
-    { scale: true, gridIndex: 0 },  // K线Y轴
-    { scale: true, gridIndex: 1 },  // MACD Y轴
-  ],
-  series: [
-    { name: 'K线', type: 'candlestick', data: data.klines },
-    { name: 'MA20', type: 'line', data: maData },
-    { name: 'MACD', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: macdData },
-  ],
-})
+K线图渲染引擎已从 ECharts 全面迁移至 KLineChart v10 (Canvas)，通过 MarketProfile 配置驱动实现 7 个市场的差异化展示。
+
+```typescript
+// frontend/src/composables/useMarketProfile.ts — 市场画像驱动
+export interface MarketProfile {
+  id: MarketId                         // 市场标识
+  colorDirection: ColorDirection       // 红涨绿跌/绿涨红跌
+  pricePrecision: number               // 价格精度
+  features: {                          // 功能开关
+    limitUpDown: boolean               // 涨跌停线
+    adjustment: boolean                // 复权按钮
+    openInterest: boolean              // 持仓量副图
+    yieldDisplay: boolean              // 收益率副图
+    logScale: boolean                  // 对数坐标
+    // ...
+  }
+  subChartSlots: SubChartSlot[]        // 副图槽位(VOL/MACD/OI/YIELD)
+  defaultIndicators: string[]          // 默认技术指标
+  apiNamespace: string                 // API模块名
+  periodOptions: PeriodOption[]        // 可用周期
+}
+
+// ChartDashboard.vue 根据 profile 自适应渲染
+const profile = getMarketProfile(marketId)
+chart = init(dom, { styles, locale: 'zh-CN' })
+chart.createIndicator({ name: 'MA', paneId: 'candle_pane' })
+chart.createIndicator('MACD')
 ```
+
+路由: `/market-overview` → `MarketOverview.vue` → `ChartDashboard.vue`。
 
 ### 6.5 可视化Cron配置组件
 
@@ -898,7 +978,7 @@ class SchedulerService:
 | **路由懒加载** | `defineAsyncComponent` | 减少首屏加载 |
 | **数据分页** | 默认1000条，30天 | 避免大数据量 |
 | **防抖节流** | lodash.debounce | 减少请求频率 |
-| **图表优化** | ECharts dataZoom | 大数据渲染优化 |
+| **图表优化** | KLineChart Canvas | 大数据渲染优化 |
 
 ### 8.3 缓存策略
 

@@ -102,6 +102,10 @@ class BondDailyService:
             cleaned_record["market_id"] = market_id
             if datasource_id:
                 cleaned_record["datasource_id"] = datasource_id
+            # 转换日期字符串为 date 对象
+            date_val = cleaned_record.get("date")
+            if isinstance(date_val, str):
+                cleaned_record["date"] = DateType.fromisoformat(date_val[:10])
             cleaned_records.append(cleaned_record)
 
         saved_count = await self.save_bond_daily(db, cleaned_records)
@@ -222,7 +226,7 @@ class BondDailyService:
         for record in data:
             stmt = insert(BondDaily).values(**record)
             stmt = stmt.on_conflict_do_update(
-                constraint="bond_daily_symbol_market_date_datasource_key",
+                constraint="uq_bond_daily_symbol_market_date_ds",
                 set_={
                     "open": stmt.excluded.open,
                     "high": stmt.excluded.high,

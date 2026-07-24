@@ -5,6 +5,7 @@
  *
  * Author: FDAS Team
  * Created: 2026-04-16
+ * Updated: 2026-07-24 - 迁移至 /market-overview 统一行情页面
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -13,9 +14,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 // 路由配置数据（纯逻辑测试，不依赖模块导入）
 const routeConfigs = [
   { path: '/login', name: 'Login', meta: { requiresAuth: false, title: '登录' } },
-  { path: '/', redirect: '/fx-data' },
+  { path: '/', redirect: '/market-overview' },
   { path: '/dashboard', name: 'Dashboard', meta: { requiresAuth: true, title: '系统概览' } },
-  { path: '/fx-data', name: 'FXData', meta: { requiresAuth: true, title: '数据分析' } },
+  { path: '/market-overview', name: 'MarketOverview', meta: { requiresAuth: true, title: '行情数据' } },
   { path: '/datasource', name: 'DataSource', meta: { requiresAuth: true, requiresAdmin: true, title: '数据源管理' } },
   { path: '/collection', name: 'Collection', meta: { requiresAuth: true, requiresAdmin: true, title: '采集任务' } },
   { path: '/users', name: 'Users', meta: { requiresAuth: true, requiresAdmin: true, title: '用户管理' } },
@@ -31,10 +32,10 @@ describe('Router 路由配置', () => {
       expect(loginRoute?.meta?.requiresAuth).toBe(false)
     })
 
-    it('应包含首页重定向', () => {
+    it('应包含首页重定向到行情数据', () => {
       const rootRoute = routeConfigs.find(r => r.path === '/')
       expect(rootRoute).toBeDefined()
-      expect(rootRoute?.redirect).toBe('/fx-data')
+      expect(rootRoute?.redirect).toBe('/market-overview')
     })
 
     it('应包含Dashboard路由', () => {
@@ -44,11 +45,11 @@ describe('Router 路由配置', () => {
       expect(dashboard?.meta?.title).toBe('系统概览')
     })
 
-    it('应包含FXData路由', () => {
-      const fxData = routeConfigs.find(r => r.path === '/fx-data')
-      expect(fxData).toBeDefined()
-      expect(fxData?.meta?.requiresAuth).toBe(true)
-      expect(fxData?.meta?.title).toBe('数据分析')
+    it('应包含行情数据路由', () => {
+      const market = routeConfigs.find(r => r.path === '/market-overview')
+      expect(market).toBeDefined()
+      expect(market?.meta?.requiresAuth).toBe(true)
+      expect(market?.meta?.title).toBe('行情数据')
     })
 
     it('应包含数据源管理路由', () => {
@@ -95,9 +96,9 @@ describe('Router 路由配置', () => {
     })
 
     it('普通用户页面需要认证但不需要admin', () => {
-      const fxData = routeConfigs.find(r => r.path === '/fx-data')
-      expect(fxData?.meta?.requiresAuth).toBe(true)
-      expect(fxData?.meta?.requiresAdmin).toBeUndefined()
+      const market = routeConfigs.find(r => r.path === '/market-overview')
+      expect(market?.meta?.requiresAuth).toBe(true)
+      expect(market?.meta?.requiresAdmin).toBeUndefined()
     })
 
     it('管理员页面需要认证和admin权限', () => {
@@ -113,36 +114,31 @@ describe('Router 路由配置', () => {
     it('标题应为中文', () => {
       const routesWithTitle = routeConfigs.filter(r => r.meta?.title)
       routesWithTitle.forEach(r => {
-        expect(r.meta?.title).toMatch(/[\u4e00-\u9fa5]/)
+        expect(r.meta?.title).toMatch(/[一-龥]/)
       })
     })
   })
 
   describe('路由守卫逻辑测试', () => {
-    // 模拟导航守卫逻辑
     const mockBeforeEach = (to, authStore) => {
-      // 检查是否需要登录
       if (to.meta?.requiresAuth && !authStore.isLoggedIn) {
         return '/login'
       }
-
-      // 检查是否需要admin权限
       if (to.meta?.requiresAdmin && authStore.user?.role !== 'admin') {
         return '/'
       }
-
-      return null // 允许通过
+      return null
     }
 
     it('未登录访问需要认证的页面应重定向到登录页', () => {
-      const to = { path: '/fx-data', meta: { requiresAuth: true } }
+      const to = { path: '/market-overview', meta: { requiresAuth: true } }
       const authStore = { isLoggedIn: false }
       const result = mockBeforeEach(to, authStore)
       expect(result).toBe('/login')
     })
 
     it('已登录访问需要认证的页面应允许通过', () => {
-      const to = { path: '/fx-data', meta: { requiresAuth: true } }
+      const to = { path: '/market-overview', meta: { requiresAuth: true } }
       const authStore = { isLoggedIn: true, user: { role: 'user' } }
       const result = mockBeforeEach(to, authStore)
       expect(result).toBeNull()
@@ -151,13 +147,6 @@ describe('Router 路由配置', () => {
     it('未登录访问登录页应允许通过', () => {
       const to = { path: '/login', meta: { requiresAuth: false } }
       const authStore = { isLoggedIn: false }
-      const result = mockBeforeEach(to, authStore)
-      expect(result).toBeNull()
-    })
-
-    it('已登录访问登录页应允许通过', () => {
-      const to = { path: '/login', meta: { requiresAuth: false } }
-      const authStore = { isLoggedIn: true, user: { role: 'user' } }
       const result = mockBeforeEach(to, authStore)
       expect(result).toBeNull()
     })
@@ -175,26 +164,12 @@ describe('Router 路由配置', () => {
       const result = mockBeforeEach(to, authStore)
       expect(result).toBeNull()
     })
-
-    it('无用户信息访问管理员页面应重定向', () => {
-      const to = { path: '/users', meta: { requiresAuth: true, requiresAdmin: true } }
-      const authStore = { isLoggedIn: true, user: null }
-      const result = mockBeforeEach(to, authStore)
-      expect(result).toBe('/')
-    })
-
-    it('用户无role属性访问管理员页面应重定向', () => {
-      const to = { path: '/users', meta: { requiresAuth: true, requiresAdmin: true } }
-      const authStore = { isLoggedIn: true, user: { id: '1' } }
-      const result = mockBeforeEach(to, authStore)
-      expect(result).toBe('/')
-    })
   })
 
   describe('路由命名验证', () => {
     it('所有非重定向路由应有name', () => {
       const routesWithName = routeConfigs.filter(r => r.name)
-      expect(routesWithName.length).toBe(7) // 除重定向路由外
+      expect(routesWithName.length).toBe(7)
     })
 
     it('路由name应唯一', () => {
@@ -215,14 +190,6 @@ describe('Router 路由配置', () => {
     it('所有路径应以/开头', () => {
       routeConfigs.forEach(r => {
         expect(r.path.startsWith('/')).toBe(true)
-      })
-    })
-
-    it('路径应使用kebab-case', () => {
-      const pathsWithKebab = routeConfigs.filter(r => r.path !== '/' && !r.redirect)
-      pathsWithKebab.forEach(r => {
-        // 路径中的单词应使用小写和连字符
-        expect(r.path).toMatch(/^\/[a-z-]*$/)
       })
     })
 

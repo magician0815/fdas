@@ -8,6 +8,7 @@ Created: 2026-04-10
 Updated: 2026-04-23 - 添加Market模型导入
 """
 
+import json
 from typing import List
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -361,78 +362,88 @@ async def sync_symbols_to_database(
     symbol_names = []  # 用于更新supported_symbols字段
 
     if market_code and market_code.startswith("stock"):
-        # 股票（A股/美股/港股）：通过AKShare接口实时获取
-        import json
-        config = {}
-        if datasource.config_file:
-            try:
-                config = json.loads(datasource.config_file)
-            except:
-                pass
+        # 股票（A股/美股/港股）：通过采集器统一标的获取（含API+默认回退）
+        config = json.loads(datasource.config_file) if datasource.config_file else {}
+        try:
+            stock_symbols = await akshare_collector.fetch_symbols_by_config(config)
+            if stock_symbols:
+                for s in stock_symbols:
+                    code = s.get("code", "")
+                    name = s.get("name", "")
+                    if code and name:
+                        fetched_symbols.append({"code": code, "value": name})
+                        symbol_names.append(name)
+                logger.info(f"通过采集器获取股票标的成功，共 {len(stock_symbols)} 个")
+            else:
+                logger.warning("采集器未返回股票标的")
+        except Exception as e:
+            logger.error(f"通过采集器获取股票标的失败: {str(e)}")
 
-        # 使用 symbol_fetch 配置从AKShare实时获取
-        symbol_fetch = config.get("symbol_fetch", {})
-        if symbol_fetch:
+        # A股额外获取指数标的（上证指数、深证成指、沪深300等）
+        if market_code == "stock_cn":
             try:
-                interface = symbol_fetch.get("interface", "")
-                if interface == "stock_zh_a_spot_em":
-                    # A股：调用AKShare实时行情接口
-                    import akshare as ak
-                    df = ak.stock_zh_a_spot_em()
-                    result_key = symbol_fetch.get("result_key", "data")
-                    code_field = symbol_fetch.get("code_field", "代码")
-                    name_field = symbol_fetch.get("name_field", "名称")
-                    # 提取code和name
-                    if code_field in df.columns and name_field in df.columns:
-                        for _, row in df.iterrows():
-                            code = str(row[code_field]).zfill(6)
-                            name = str(row[name_field])
-                            if code and name and code.isdigit():
-                                fetched_symbols.append({"code": code, "value": name})
-                                symbol_names.append(name)
-                elif interface == "stock_us_spot_em":
-                    # 美股
-                    import akshare as ak
-                    df = ak.stock_us_spot_em()
-                    code_field = symbol_fetch.get("code_field", "代码")
-                    name_field = symbol_fetch.get("name_field", "名称")
-                    if code_field in df.columns and name_field in df.columns:
-                        for _, row in df.iterrows():
-                            code = str(row[code_field])
-                            name = str(row[name_field])
-                            if code and name:
-                                fetched_symbols.append({"code": code, "value": name})
-                                symbol_names.append(name)
-                elif interface == "stock_hk_spot_em":
-                    # 港股
-                    import akshare as ak
-                    df = ak.stock_hk_spot_em()
-                    code_field = symbol_fetch.get("code_field", "代码")
-                    name_field = symbol_fetch.get("name_field", "名称")
-                    if code_field in df.columns and name_field in df.columns:
-                        for _, row in df.iterrows():
-                            code = str(row[code_field])
-                            name = str(row[name_field])
-                            if code and name:
-                                fetched_symbols.append({"code": code, "value": name})
-                                symbol_names.append(name)
+                import akshare as ak
+                import asyncio
+                df = await asyncio.to_thread(ak.stock_zh_index_spot_sina)
+                for _, row in df.iterrows():
+                    raw_code = str(row.get("代码", ""))
+                    name = str(row.get("名称", ""))
+                    # 指数代码带交易所前缀 (sh000001, sz399001)
+                    if raw_code.startswith("sh") or raw_code.startswith("sz"):
+                        code = raw_code  # keep prefix for indices
+                    else:
+                        code = raw_code
+                    if code and name:
+                        fetched_symbols.append({"code": code, "value": name})
+                        symbol_names.append(name)
+                logger.info(f"获取指数标的成功，新增 {len(df)} 个")
             except Exception as e:
-                logger.error(f"通过AKShare获取股票标的失败: {str(e)}")
-                # 如果AKShare调用失败，使用symbol_mapping作为后备
-                symbol_mapping = config.get("symbol_mapping", {})
-                for code, name in symbol_mapping.items():
-                    fetched_symbols.append({"code": code, "value": name})
-                    symbol_names.append(name)
-        else:
-            # 没有symbol_fetch配置，使用symbol_mapping作为后��
-            symbol_mapping = config.get("symbol_mapping", {})
-            for code, name in symbol_mapping.items():
-                fetched_symbols.append({"code": code, "value": name})
-                symbol_names.append(name)
+                logger.warning(f"获取指数标的失败（非关键）: {e}")
+    elif market_code and market_code.startswith("futures"):
+        # 期货（国内/国际）：通过采集器统一标的获取
+        config = json.loads(datasource.config_file) if datasource.config_file else {}
+        try:
+            fut_symbols = await akshare_collector.fetch_symbols_by_config(config)
+            if fut_symbols:
+                for s in fut_symbols:
+                    code = s.get("code", "")
+                    name = s.get("name", "")
+                    if code and name:
+                        fetched_symbols.append({"code": code, "value": name})
+                        symbol_names.append(name)
+                logger.info(f"通过采集器获取期货标的成功，共 {len(fut_symbols)} 个")
+        except Exception as e:
+            logger.warning(f"通过采集器获取期货标的失败: {e}")
+    elif market_code and market_code.startswith("bond"):
+        # 债券（国内债券/美债）：通过采集器统一标的获取
+        config = json.loads(datasource.config_file) if datasource.config_file else {}
+        try:
+            bond_symbols = await akshare_collector.fetch_symbols_by_config(config)
+            if bond_symbols:
+                for s in bond_symbols:
+                    code = s.get("code", "")
+                    name = s.get("name", "")
+                    if code and name:
+                        fetched_symbols.append({"code": code, "value": name})
+                        symbol_names.append(name)
+                logger.info(f"通过采集器获取债券标的成功，共 {len(bond_symbols)} 个")
+        except Exception as e:
+            logger.warning(f"通过采集器获取债券标的失败: {e}")
     else:
-        # 外汇：调用AKShare获取货币对列表
-        fetched_symbols = await akshare_collector.fetch_supported_symbols()
-        symbol_names = [s["value"] for s in fetched_symbols]
+        # 外汇：统一通过配置的 symbol_fetch 获取标的
+        config = json.loads(datasource.config_file) if datasource.config_file else {}
+        try:
+            forex_symbols = await akshare_collector.fetch_symbols_by_config(config)
+            if forex_symbols:
+                for s in forex_symbols:
+                    code = s.get("code", "")
+                    name = s.get("name", s.get("value", ""))
+                    if code and name:
+                        fetched_symbols.append({"code": code, "value": name})
+                        symbol_names.append(name)
+                logger.info(f"通过采集器获取外汇标的成功，共 {len(forex_symbols)} 个")
+        except Exception as e:
+            logger.warning(f"通过采集器获取外汇标的失败: {e}")
 
     added_count = 0
     updated_count = 0
@@ -444,7 +455,10 @@ async def sync_symbols_to_database(
             from app.models.stock_symbol import StockSymbol
             market_name = "A股" if market_code == "stock_cn" else ("美股" if market_code == "stock_us" else "港股")
             result = await db.execute(
-                select(StockSymbol).where(StockSymbol.code == symbol_info["code"])
+                select(StockSymbol).where(
+                    StockSymbol.code == symbol_info["code"],
+                    StockSymbol.market_id == datasource.market_id,
+                )
             )
             existing = result.scalar_one_or_none()
 
@@ -458,8 +472,61 @@ async def sync_symbols_to_database(
                 new_symbol = StockSymbol(
                     code=symbol_info["code"],
                     name=symbol_info["value"],
-                    market=market_name,
+                    market_id=datasource.market_id,
                     datasource_id=datasource_id,
+                    is_active=True,
+                )
+                db.add(new_symbol)
+                added_count += 1
+        elif market_code and market_code.startswith("bond"):
+            # 债券：使用BondSymbol模型
+            from app.models.bond_symbol import BondSymbol
+            result = await db.execute(
+                select(BondSymbol).where(
+                    BondSymbol.code == symbol_info["code"],
+                    BondSymbol.market_id == datasource.market_id,
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing:
+                if existing.name != symbol_info["value"]:
+                    existing.name = symbol_info["value"]
+                    updated_count += 1
+                else:
+                    skipped_count += 1
+            else:
+                new_symbol = BondSymbol(
+                    code=symbol_info["code"],
+                    name=symbol_info["value"],
+                    market_id=datasource.market_id,
+                    datasource_id=datasource_id,
+                    bond_type="国债" if market_code == "bond_us" else "企业债",
+                    is_active=True,
+                )
+                db.add(new_symbol)
+                added_count += 1
+        elif market_code and market_code.startswith("futures"):
+            # 期货（国内/国际）：使用FuturesVariety模型
+            from app.models.futures_variety import FuturesVariety as FV
+            result = await db.execute(
+                select(FV).where(
+                    FV.code == symbol_info["code"],
+                    FV.market_id == datasource.market_id,
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing:
+                if existing.name != symbol_info["value"]:
+                    existing.name = symbol_info["value"]
+                    updated_count += 1
+                else:
+                    skipped_count += 1
+            else:
+                new_symbol = FV(
+                    code=symbol_info["code"],
+                    name=symbol_info["value"],
+                    exchange="global",
+                    market_id=datasource.market_id,
                     is_active=True,
                 )
                 db.add(new_symbol)
@@ -467,7 +534,10 @@ async def sync_symbols_to_database(
         else:
             # 外汇：使用ForexSymbol模型
             result = await db.execute(
-                select(ForexSymbol).where(ForexSymbol.code == symbol_info["code"])
+                select(ForexSymbol).where(
+                    ForexSymbol.code == symbol_info["code"],
+                    ForexSymbol.market_id == datasource.market_id,
+                )
             )
             existing = result.scalar_one_or_none()
 
@@ -481,6 +551,7 @@ async def sync_symbols_to_database(
                 new_symbol = ForexSymbol(
                     code=symbol_info["code"],
                     name=symbol_info["value"],
+                    market_id=datasource.market_id,
                     datasource_id=datasource_id,
                     base_currency=symbol_info["code"][:3] if len(symbol_info["code"]) >= 3 else "",
                     quote_currency=symbol_info["code"][3:] if len(symbol_info["code"]) >= 3 else "",

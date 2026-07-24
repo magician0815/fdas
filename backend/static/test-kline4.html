@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>KLineChart UMD测试</title>
+<style>body{margin:20px;font-family:monospace}#c{width:100%;height:500px;border:1px solid #ccc}.log{background:#f5f5f5;padding:10px;margin:10px 0;font-size:12px;max-height:300px;overflow:auto}</style></head>
+<body>
+<h2>KLineChart UMD直接测试 (klinecharts.js 全局变量)</h2>
+<div class="log" id="log"></div>
+<div id="c"></div>
+<script src="/klinecharts-umd.js"></script>
+<script>
+var el=document.getElementById('log');function log(m){el.innerHTML+=m+'<br>';console.log(m)}
+try {
+  var kc = window.klinecharts
+  log('1. klinecharts全局: ' + (kc ? 'OK' : 'MISSING'))
+  if (!kc) throw new Error('klinecharts未加载')
+  log('   exports: ' + Object.keys(kc).filter(function(k){return !k.startsWith('_')}).join(', '))
+
+  log('2. init...')
+  var chart = kc.init('c', { locale: 'zh-CN' })
+  log('   chart: ' + (chart ? 'OK id='+chart.id : 'NULL'))
+
+  if (chart) {
+    log('3. 设置数据...')
+    chart.setDataLoader({getBars: function(p) { p.callback([
+      {timestamp:Date.now()-864e5*4,open:100,high:105,low:99,close:103,volume:1000},
+      {timestamp:Date.now()-864e5*3,open:103,high:108,low:101,close:107,volume:1200},
+      {timestamp:Date.now()-864e5*2,open:107,high:110,low:105,close:106,volume:900},
+      {timestamp:Date.now()-864e5,  open:106,high:109,low:104,close:108,volume:1100},
+      {timestamp:Date.now(),        open:108,high:112,low:107,close:110,volume:800},
+    ], {forward:false}) }})
+    chart.resetData()
+    chart.createIndicator('MA', true)
+    chart.createIndicator('VOL')
+    log('4. 完成! 应见到蜡烛图')
+  }
+} catch(e) { log('ERROR: '+e.message) }
+</script></body></html>

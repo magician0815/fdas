@@ -59,17 +59,19 @@ function initChart(period: string, dom: HTMLElement): Chart | null {
 
   if (!chart) return null
 
-  chart.setPrecision(p.pricePrecision)
+  chart.setSymbol({ ticker: props.symbolCode || 'UNKNOWN', pricePrecision: p.pricePrecision, volumePrecision: 0 })
+  chart.setPeriod({ type: 'day', span: 1 })
   chart.setOffsetRightDistance(p.features.continuousTrading ? 80 : 50)
 
   const periodData = props.data[period] || []
   if (periodData.length) {
     const klineData = convertToKLineData(periodData, p)
-    chart.applyNewData(klineData)
+    chart.setDataLoader({ getBars: ({ callback }) => callback(klineData, { forward: false }) })
+    chart.resetData()
   }
 
-  // 默认指标
-  chart.createIndicator('MA', { isStack: true, pane: { id: 'candle_pane' } })
+  // v10: MA显式指定paneId叠加在主图
+  chart.createIndicator({ name: 'MA', paneId: 'candle_pane' })
   chart.createIndicator('VOL')
 
   // Crosshair 事件同步到其他实例
@@ -115,7 +117,8 @@ watch(
       const periodData = newData[period] || []
       if (periodData.length) {
         const klineData = convertToKLineData(periodData, props.marketProfile)
-        chart.applyNewData(klineData)
+        chart.setDataLoader({ getBars: ({ callback }) => callback(klineData, { forward: false }) })
+        chart.resetData()
       }
     }
   },

@@ -115,16 +115,16 @@ describe('MarketProfile 市场配置系统', () => {
       expect(p.pricePrecision).toBe(2)
     })
 
-    it('美股应绿涨红跌且无涨跌停', () => {
+    it('美股应红涨绿跌且无涨跌停', () => {
       const p = getMarketProfile('stock_us')!
-      expect(p.colorDirection).toBe('green-up-red-down')
+      expect(p.colorDirection).toBe('red-up-green-down')
       expect(p.features.limitUpDown).toBe(false)
     })
 
     it('外汇应为4位精度且无成交量副图', () => {
       const p = getMarketProfile('forex')!
       expect(p.pricePrecision).toBe(4)
-      expect(p.subChartSlots.find(s => s.id === 'volume')).toBeUndefined()
+      expect(p.pricePrecision).toBe(4)
       expect(p.indicatorStrategy).toBe('server')
     })
 

@@ -36,7 +36,7 @@ FDAS v2.5.0 起，金融K线图表由自研 ECharts 方案迁移至 [KLineChart]
 
 ```
 Vue 3 Application Layer (UI Shell)
-  ├── MarketDataView.vue      ← 统一行情页面
+  ├── MarketOverview.vue      ← 统一行情页面
   ├── ChartDashboard.vue      ← KLineChart 包装器
   ├── ChartToolbar.vue        ← 市场自适应工具栏
   └── RangeStatsPanel.vue     ← 区间统计 Vue 浮层
@@ -87,10 +87,10 @@ KLineChart Canvas 渲染
 | 市场 | 精度 | 涨跌停 | 复权 | 副图 | 特殊功能 |
 |------|------|--------|------|------|---------|
 | A股 | 2位 | 10%/20%/5%/30% | 前/后复权 | VOL+MACD | ST检测/停牌/除权 |
-| 港股 | 3位 | 无 | 无 | VOL+MACD | — |
+| 港股 | 3位 | 无 | 无 | VOL+MACD | 除权 |
 | 美股 | 2位 | 无 | 前/后复权 | VOL+MACD | 绿涨红跌 |
 | 外汇 | 4位 | 无 | 无 | MACD | 24H/服务端指标 |
-| 期货 | 品种可变 | 10% | 无 | VOL+OI+MACD | 主力合约 |
+| 期货 | 品种可变 | 10% | 无 | OI+MACD | 主力合约 |
 | 国内债券 | 4位 | 无 | 无 | 收益率 | — |
 | 美债 | 4位 | 无 | 无 | 收益率+利差 | 中美利差 |
 
@@ -149,3 +149,74 @@ chart.setDataLoader({
 | 自定义指标 | registerIndicator | 手动 series | Pine Script |
 | Vue 3 集成 | 简单 (init/dispose) | echarts 包 + vue-echarts | 有限 |
 | 中文本地化 | registerLocale | 手动配置 | 部分 |
+
+---
+
+## 八、核心设计原则
+
+### 8.1 统一渲染引擎
+
+**原则**: 所有市场的 K 线图表必须通过同一个 `ChartDashboard` 组件渲染，底层使用 KLineChart v10 Canvas 引擎。禁止各市场独立实现图表逻辑。
+
+**路由**: `/market-overview` → `MarketOverview` → `ChartDashboard`
+
+**架构保证**:
+- 新增市场只需注册 `MarketProfile`，不需要修改任何图表组件代码
+- 所有市场共享同一套 KLineChart v10 初始化流程（`setSymbol` → `setPeriod` → `setDataLoader`）
+- Bug 修复一次即可覆盖所有市场
+
+### 8.2 声明式市场差异化
+
+**原则**: 市场间差异通过 `MarketProfile.features` 声明式开关控制，不在组件中硬编码 `if (market === 'xxx')`。
+
+| 差异化维度 | 实现方式 | 示例 |
+|-----------|---------|------|
+| 涨跌停 | `features.limitUpDown` + `limitUpDownSubTypes` | A股主板10%, 科创板20%, ST股5% |
+| 复权 | `features.adjustment` | A股前/后复权, 外汇无复权 |
+| 副图指标 | `defaultIndicators` + `subChartSlots` | 期货多OI, 债券多YIELD |
+| 颜色方向 | `colorDirection` | A股红涨绿跌, 美股绿涨红跌 |
+| 精度 | `pricePrecision` | 外汇4位, A股2位 |
+| 交易时间 | `features.continuousTrading` | 外汇24H, A股固定时段 |
+| 对数坐标 | `features.logScale` | A股支持, 债券不支持 |
+| 指标策略 | `indicatorStrategy` | 外汇服务端, 其他客户端 |
+
+### 8.3 扩展即注册
+
+**原则**: 所有自定义指标和覆盖层通过 KLineChart 全局注册机制（`registerIndicator` / `registerOverlay`）添加，注册后所有图表实例自动可用。
+
+当前扩展清单:
+| 扩展名 | 类型 | 适用市场 | 用途 |
+|--------|------|---------|------|
+| OI | registerIndicator | futures_cn | 持仓量柱状图 |
+| YIELD | registerIndicator | bond_cn, bond_us | 收益率曲线 |
+| YIELD_SPREAD | registerIndicator | bond_us | 中美利差 |
+| limitUpDown | registerOverlay | stock_cn, futures_cn | 涨跌停线 |
+| gapMarker | registerOverlay | stock_cn, stock_hk | 跳空缺口 |
+| dividendMarker | registerOverlay | stock_cn, stock_hk, stock_us | 除权标记 |
+
+### 8.4 新增市场流程
+
+**只需 4 步，不修改任何组件代码**:
+
+1. 在 `useMarketProfile.ts` 定义新的 `MarketProfile` 对象
+2. 如有特有指标，在 `chartExtensions/` 添加 `registerIndicator` 或 `registerOverlay`
+3. 在 `router/index.js` 添加 `/market/{new-market}` 路由
+4. 在 `Sidebar.vue` "多市场数据"子菜单中添加菜单项
+
+```typescript
+// 示例: 新增加密货币市场
+const crypto: MarketProfile = {
+  id: 'crypto',
+  displayName: '加密货币',
+  colorDirection: 'green-up-red-down',
+  pricePrecision: 2,
+  features: { limitUpDown: false, adjustment: false, ... },
+  defaultIndicators: ['MA', 'VOL', 'MACD'],
+  subChartSlots: [
+    { id: 'volume', indicatorName: 'VOL', defaultVisible: true },
+    { id: 'macd', indicatorName: 'MACD', defaultVisible: true },
+  ],
+  // ...其余配置
+}
+registerMarketProfile(crypto)
+```

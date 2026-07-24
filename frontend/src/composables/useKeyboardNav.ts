@@ -106,15 +106,11 @@ export function useKeyboardNav(
       case 'C':
         if (enableCopyImage && (e.ctrlKey || e.metaKey)) {
           e.preventDefault()
-          const canvas = (c as any).getCanvas?.()
-          if (canvas) {
-            canvas.toBlob?.((blob: Blob | null) => {
-              if (blob) {
-                navigator.clipboard?.write?.([
-                  new ClipboardItem({ 'image/png': blob }),
-                ])
-              }
-            })
+          const url = c.getConvertPictureUrl(true, 'png')
+          if (url) {
+            fetch(url).then(r => r.blob()).then(blob => {
+              navigator.clipboard?.write?.([new ClipboardItem({ 'image/png': blob })])
+            }).catch(() => {})
           }
         }
         break

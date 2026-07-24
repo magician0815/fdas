@@ -21,7 +21,7 @@ const routes = [
   },
   {
     path: '/',
-    redirect: '/fx-data'
+    redirect: '/market-overview'
   },
   {
     path: '/dashboard',
@@ -29,60 +29,12 @@ const routes = [
     component: () => import('@/views/Dashboard.vue'),
     meta: { requiresAuth: true, title: '系统概览' }
   },
-  // === KLineChart 统一行情页面 (v2.5.0 新增) ===
+  // === 统一行情页面 ===
   {
-    path: '/market/forex',
-    name: 'MarketForex',
-    component: () => import('@/views/MarketDataView.vue'),
-    props: { marketId: 'forex' },
-    meta: { requiresAuth: true, title: '外汇数据' }
-  },
-  {
-    path: '/market/stock-cn',
-    name: 'MarketStockCN',
-    component: () => import('@/views/MarketDataView.vue'),
-    props: { marketId: 'stock_cn' },
-    meta: { requiresAuth: true, title: 'A股数据' }
-  },
-  {
-    path: '/market/futures-cn',
-    name: 'MarketFuturesCN',
-    component: () => import('@/views/MarketDataView.vue'),
-    props: { marketId: 'futures_cn' },
-    meta: { requiresAuth: true, title: '期货数据' }
-  },
-  {
-    path: '/market/bond-cn',
-    name: 'MarketBondCN',
-    component: () => import('@/views/MarketDataView.vue'),
-    props: { marketId: 'bond_cn' },
-    meta: { requiresAuth: true, title: '债券数据' }
-  },
-
-  // === 旧版路由 (向后兼容，后续迁移完成后移除) ===
-  {
-    path: '/fx-data',
-    name: 'FXData',
-    redirect: '/market/forex',
-    meta: { requiresAuth: true, title: '数据分析' }
-  },
-  {
-    path: '/stock-data',
-    name: 'StockData',
-    redirect: '/market/stock-cn',
-    meta: { requiresAuth: true, title: '股票数据' }
-  },
-  {
-    path: '/futures-data',
-    name: 'FuturesData',
-    redirect: '/market/futures-cn',
-    meta: { requiresAuth: true, title: '期货数据' }
-  },
-  {
-    path: '/bond-data',
-    name: 'BondData',
-    redirect: '/market/bond-cn',
-    meta: { requiresAuth: true, title: '债券数据' }
+    path: '/market-overview',
+    name: 'MarketOverview',
+    component: () => import('@/views/MarketOverview.vue'),
+    meta: { requiresAuth: true, title: '行情数据' }
   },
   {
     path: '/datasource',

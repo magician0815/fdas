@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>KLineChart诊断</title>
+<style>body{margin:20px;font-family:monospace}#chart{width:100%;height:500px;border:1px solid #ccc}.log{background:#f5f5f5;padding:10px;margin:10px 0;max-height:300px;overflow:auto}</style></head>
+<body>
+<h2>KLineChart 诊断页面</h2>
+<div id="status"></div>
+<div class="log" id="log"></div>
+<div id="chart"></div>
+<script type="module">
+const log = (msg) => { document.getElementById('log').innerHTML += msg + '<br>'; console.log(msg) }
+
+log('=== 1. 加载 KLineChart ===')
+try {
+  const kc = await import('/assets/index-H7pQ6WZZ.js')
+  log('index.js 加载成功, keys: ' + Object.keys(kc).slice(0, 5).join(', '))
+} catch(e) {
+  log('index.js 加载失败: ' + e.message)
+}
+
+log('=== 2. 直接 import klinecharts ===')
+try {
+  // 尝试从node_modules加载 (仅开发环境)
+  const kc = await import('klinecharts')
+  log('klinecharts 可用: ' + Object.keys(kc).slice(0, 10).join(', '))
+  const chart = kc.init('chart', { locale: 'zh-CN' })
+  if (chart) {
+    log('KLineChart init 成功')
+    chart.applyNewData([
+      { timestamp: Date.now()-86400000*4, open:100, high:105, low:99, close:103, volume:1000 },
+      { timestamp: Date.now()-86400000*3, open:103, high:108, low:101, close:107, volume:1200 },
+      { timestamp: Date.now()-86400000*2, open:107, high:110, low:105, close:106, volume:900 },
+      { timestamp: Date.now()-86400000, open:106, high:109, low:104, close:108, volume:1100 },
+      { timestamp: Date.now(), open:108, high:112, low:107, close:110, volume:800 },
+    ])
+    chart.createIndicator('MA', false, { id: 'candle_pane' })
+    chart.createIndicator('VOL')
+    log('数据加载 + 指标创建成功')
+  } else {
+    log('ERROR: KLineChart init 返回 null')
+  }
+} catch(e) {
+  log('klinecharts import 失败: ' + e.message + '\n' + e.stack)
+}
+
+log('=== 3. 测试 API ===')
+try {
+  const resp = await fetch('/api/v1/auth/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username:'admin',password:'admin123'})
+  })
+  const login = await resp.json()
+  log('登录: ' + login.success + ' session:' + login.data?.session_id?.substring(0,8))
+
+  const sid = login.data.session_id
+  const dataResp = await fetch('/api/v1/fx/data?symbol_id=6aa4b49f-cb3b-41d6-88b4-1fd6db81029e&limit=10', {
+    headers: {'X-Session-ID': sid}
+  })
+  const data = await dataResp.json()
+  log('CNHUSD 数据: ' + data.success + ' 条数: ' + (data.data?.length || 0))
+} catch(e) {
+  log('API 测试失败: ' + e.message)
+}
+</script></body></html>

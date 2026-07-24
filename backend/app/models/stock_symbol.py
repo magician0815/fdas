@@ -8,7 +8,7 @@ Created: 2026-04-22
 Updated: 2026-04-23 - 新增market_id字段支持多市场
 """
 
-from sqlalchemy import Column, String, Boolean, DateTime, Date, Text, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Date, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime, timezone
 import uuid
@@ -38,7 +38,7 @@ class StockSymbol(Base):
     __tablename__ = "stock_symbols"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="股票唯一标识ID")
-    code = Column(String(20), unique=True, nullable=False, index=True, comment="股票代码")
+    code = Column(String(20), nullable=False, index=True, comment="股票代码")
     name = Column(String(100), nullable=False, comment="股票名称")
     market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=True, index=True, comment="所属市场ID")
     exchange = Column(String(20), nullable=True, comment="交易所代码")
@@ -49,3 +49,7 @@ class StockSymbol(Base):
     description = Column(Text, nullable=True, comment="股票描述")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), comment="更新时间")
+
+    __table_args__ = (
+        UniqueConstraint("code", "market_id", name="uq_stock_symbols_code_market"),
+    )

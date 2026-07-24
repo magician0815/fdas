@@ -78,4 +78,5 @@ class FuturesVarietyListItem(BaseModel):
     code: str
     name: str
     exchange: str
+    market_id: Optional[UUID]
     is_active: bool

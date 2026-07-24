@@ -43,26 +43,24 @@ class BondDaily(Base):
     """
     __tablename__ = "bond_daily"
     __table_args__ = (
-        UniqueConstraint("symbol_id", "market_id", "date", "datasource_id", name="bond_daily_symbol_market_date_datasource_key"),
-        # PostgreSQL分区表，主键必须包含分区键(date)
-        {"primary_key": ["id", "date"]}
+        UniqueConstraint("symbol_id", "market_id", "date", "datasource_id", name="uq_bond_daily_symbol_market_date_ds"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="数据唯一标识ID")
-    symbol_id = Column(UUID(as_uuid=True), ForeignKey("bond_symbols.id"), nullable=False, comment="关联债券ID")
+    symbol_id = Column(UUID(as_uuid=True), ForeignKey("bond_symbols.id"), primary_key=True, nullable=False, comment="关联债券ID")
     market_id = Column(UUID(as_uuid=True), ForeignKey("markets.id"), nullable=False, index=True, comment="所属市场ID")
     datasource_id = Column(UUID(as_uuid=True), ForeignKey("datasources.id"), comment="数据来源ID")
     date = Column(Date, primary_key=True, nullable=False, comment="交易日期")
-    open = Column(Numeric(12, 4), comment="开盘价")
-    high = Column(Numeric(12, 4), comment="最高价")
-    low = Column(Numeric(12, 4), comment="最低价")
-    close = Column(Numeric(12, 4), comment="收盘价")
+    open = Column(Numeric(18, 4), comment="开盘价")
+    high = Column(Numeric(18, 4), comment="最高价")
+    low = Column(Numeric(18, 4), comment="最低价")
+    close = Column(Numeric(18, 4), comment="收盘价")
     yield_rate = Column(Numeric(12, 6), nullable=True, comment="收益率（百分比）")
     duration = Column(Numeric(10, 4), nullable=True, comment="久期")
     convexity = Column(Numeric(10, 4), nullable=True, comment="凸性")
     volume = Column(BigInteger, default=0, comment="成交量")
-    amount = Column(Numeric(20, 2), default=0, comment="成交额")
-    change_pct = Column(Numeric(10, 4), nullable=True, comment="涨跌幅（百分比）")
-    change_amount = Column(Numeric(10, 4), nullable=True, comment="涨跌额")
-    amplitude = Column(Numeric(10, 4), nullable=True, comment="振幅（百分比）")
+    amount = Column(Numeric(24, 2), default=0, comment="成交额")
+    change_pct = Column(Numeric(12, 4), nullable=True, comment="涨跌幅（百分比）")
+    change_amount = Column(Numeric(18, 4), nullable=True, comment="涨跌额")
+    amplitude = Column(Numeric(12, 4), nullable=True, comment="振幅（百分比）")
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="数据更新时间")

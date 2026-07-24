@@ -18,7 +18,7 @@ from app.main import app
 from app.api.v1.markets import router
 from app.models.user import User
 from app.models.market import Market
-from app.core.deps import require_admin
+from app.core.deps import require_login
 from app.core.database import get_db
 
 
@@ -47,7 +47,7 @@ def mock_market():
     return market
 
 
-def override_require_admin(mock_user):
+def override_require_login(mock_user):
     """覆盖require_admin依赖."""
     async def _require_admin():
         return mock_user
@@ -77,7 +77,7 @@ class TestMarketsAPIAuthorized:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
+        test_app.dependency_overrides[require_login] = override_require_login(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
         test_app.include_router(router, prefix="/api/v1/markets")
@@ -102,7 +102,7 @@ class TestMarketsAPIAuthorized:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
+        test_app.dependency_overrides[require_login] = override_require_login(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
         test_app.include_router(router, prefix="/api/v1/markets")
@@ -138,7 +138,7 @@ class TestMarketsAPIAuthorized:
         mock_result.scalars.return_value = mock_scalars
         mock_db.execute.return_value = mock_result
 
-        test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
+        test_app.dependency_overrides[require_login] = override_require_login(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
         test_app.include_router(router, prefix="/api/v1/markets")
@@ -161,7 +161,7 @@ class TestMarketsAPIAuthorized:
         mock_result.scalar_one_or_none.return_value = mock_market
         mock_db.execute.return_value = mock_result
 
-        test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
+        test_app.dependency_overrides[require_login] = override_require_login(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
         test_app.include_router(router, prefix="/api/v1/markets")
@@ -180,7 +180,7 @@ class TestMarketsAPIAuthorized:
         test_app = FastAPI()
         mock_db = AsyncMock()
 
-        test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
+        test_app.dependency_overrides[require_login] = override_require_login(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
         test_app.include_router(router, prefix="/api/v1/markets")
@@ -202,7 +202,7 @@ class TestMarketsAPIAuthorized:
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
 
-        test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
+        test_app.dependency_overrides[require_login] = override_require_login(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
         test_app.include_router(router, prefix="/api/v1/markets")
@@ -224,7 +224,7 @@ class TestMarketsAPIAuthorized:
         mock_result.scalar_one_or_none.return_value = mock_market
         mock_db.execute.return_value = mock_result
 
-        test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
+        test_app.dependency_overrides[require_login] = override_require_login(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
         test_app.include_router(router, prefix="/api/v1/markets")
@@ -247,7 +247,7 @@ class TestMarketsAPIAuthorized:
         mock_result.scalar_one_or_none.return_value = None
         mock_db.execute.return_value = mock_result
 
-        test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
+        test_app.dependency_overrides[require_login] = override_require_login(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
         test_app.include_router(router, prefix="/api/v1/markets")

@@ -15,6 +15,7 @@ import {
 import { onUnmounted, shallowRef } from 'vue'
 import type { MarketProfile } from './useMarketProfile'
 import { createDataLoader } from './useDataLoader'
+import logger from '@/services/logger'
 
 // ---- 样式工厂 ----
 
@@ -74,12 +75,13 @@ export function useKLineChart() {
     })
 
     if (!chart) {
-      console.error('[useKLineChart] 初始化 KLineChart 失败')
+      logger.error('初始化KLineChart失败')
       return null
     }
 
     chart.setDataLoader(dataLoader)
-    chart.setPrecision(profile.pricePrecision)
+    chart.setSymbol({ ticker: 'UNKNOWN', pricePrecision: profile.pricePrecision, volumePrecision: 0 })
+    chart.setPeriod({ type: 'day', span: 1 })
     chart.setOffsetRightDistance(profile.features.continuousTrading ? 80 : 50)
 
     chartRef.value = chart

@@ -14,7 +14,7 @@ from sqlalchemy import select
 import logging
 
 from app.core.database import get_db
-from app.core.deps import require_admin
+from app.core.deps import require_login
 from app.models.user import User
 from app.models.market import Market
 from app.schemas.market import MarketResponse
@@ -27,12 +27,10 @@ router = APIRouter()
 @router.get("/", response_model=Response)
 async def list_markets(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_login),
 ):
     """
-    获取市场类型列表.
-
-    仅admin可访问.
+    获取市场类型列表（所有登录用户可访问，用于前端市场映射）.
     """
     result = await db.execute(
         select(Market).where(Market.is_active == True).order_by(Market.code)
@@ -48,7 +46,7 @@ async def list_markets(
 @router.get("/all", response_model=Response)
 async def list_all_markets(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_login),
 ):
     """
     获取所有市场类型（包括禁用的）.
@@ -68,7 +66,7 @@ async def list_all_markets(
 async def get_market(
     market_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_login),
 ):
     """
     获取市场类型详情.
@@ -106,7 +104,7 @@ async def get_market(
 async def get_market_by_code(
     code: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_login),
 ):
     """
     根据代码获取市场类型.

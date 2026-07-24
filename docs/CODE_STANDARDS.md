@@ -300,15 +300,21 @@ def upgrade():
 -- 标的基础信息表通用结构
 CREATE TABLE {市场}_symbols (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    code VARCHAR(20) UNIQUE NOT NULL,                -- 标的代码
+    code VARCHAR(20) NOT NULL,                        -- 标的代码
     name VARCHAR(50) NOT NULL,                        -- 标的名称
+    market_id UUID NOT NULL REFERENCES markets(id),   -- 所属市场ID
     description TEXT,                                 -- 描述说明
     datasource_id UUID REFERENCES datasources(id),    -- 默认数据来源
     is_active BOOLEAN DEFAULT true,                   -- 是否启用
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(code, market_id)                           -- 跨市场唯一约束
 );
+CREATE INDEX idx_{市场}_symbols_code ON {市场}_symbols(code);
+CREATE INDEX idx_{市场}_symbols_market ON {市场}_symbols(market_id);
 ```
+
+**关键约束规则**：标的基础信息表必须使用 `(code, market_id)` 作为唯一约束，而非单独的 `code`。不同市场可能存在相同代码的标的（如港股 00001 与 A 股 000001），`market_id` 确保跨市场隔离。所有关联查询（同步、去重）必须同时匹配 `code` 和 `market_id`。
 
 **不同市场可增加特定字段**：
 
@@ -328,6 +334,7 @@ CREATE TABLE {市场}_symbols (
 CREATE TABLE {市场}_daily (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     symbol_id UUID NOT NULL REFERENCES {市场}_symbols(id),  -- 关联标的
+    market_id UUID NOT NULL REFERENCES markets(id),         -- 所属市场ID
     datasource_id UUID REFERENCES datasources(id),          -- 数据来源
     date DATE NOT NULL,                                      -- 交易日期
     open NUMERIC(10,4),                                      -- 开盘价
@@ -338,9 +345,12 @@ CREATE TABLE {市场}_daily (
     change_amount NUMERIC(10,4),                             -- 涨跌额
     amplitude NUMERIC(10,4),                                 -- 振幅
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,  -- 更新时间
-    UNIQUE(symbol_id, date, datasource_id)
+    UNIQUE(symbol_id, market_id, date, datasource_id)
 ) PARTITION BY RANGE (date);
+CREATE INDEX idx_{市场}_daily_market_date ON {市场}_daily(market_id, date DESC);
 ```
+
+**关键约束规则**：日线行情表的唯一约束必须包含 `market_id`（`symbol_id, market_id, date, datasource_id`），索引必须包含 `(market_id, date DESC)` 以支持按市场查询和分区裁剪。
 
 **不同市场可增加特定字段**：
 
@@ -349,7 +359,34 @@ CREATE TABLE {市场}_daily (
 | stock_cn | volume, turnover, turnover_rate | 成交量、成交额、换手率 |
 | futures_cn | volume, turnover, open_interest | 成交量、成交额、持仓量 |
 
-#### 1.4.4 时间分区规范
+#### 1.4.4 数据源标的动态获取规范 (v2.5.1)
+
+**强制规则**：所有数据源配置（`datasources.config_file`）必须包含 `symbol_fetch` 字段，声明标的清单的获取方式。禁止在 config_file 中硬编码 `symbol_mapping`、`supported_symbols` 等静态标的映射。
+
+```json
+// 正确：通过 symbol_fetch 声明动态获取
+{
+  "symbol_fetch": {
+    "interface": "forex_em",
+    "dynamic": true
+  }
+}
+
+// 错误：硬编码 symbol_mapping
+{
+  "symbol_mapping": {
+    "USDCNY": "133.USDCNH",
+    ...
+  }
+}
+```
+
+- **`symbol_fetch.interface`**: 对应采集器中 `fetch_symbols_by_config()` 的接口分派键
+- **`symbol_fetch.dynamic`**: `true`=从 API 实时获取，`false`=使用预定义固定列表（如债券期限品种）
+- **同步流程**: 前端"同步金融标的" → `datasources.py` 读取 `symbol_fetch` → `collector.fetch_symbols_by_config()` → 分派到具体方法
+- **采集流程**: 代码翻译（如外汇货币对→东方财富代码）优先使用 AKShare 原生映射表，config_file 仅作覆盖
+
+#### 1.4.5 时间分区规范
 
 行情数据表必须使用PostgreSQL原生分区，按时间范围分片：
 
@@ -417,18 +454,18 @@ CREATE TABLE {市场}_hourly_202601 PARTITION OF {市场}_hourly
 ```vue
 <script setup>
 /**
- * 汇率数据可视化组件.
+ * 行情数据可视化组件.
  *
- * 使用ECharts渲染K线图、均线图、MACD图，支持时间范围切换.
+ * 使用KLineChart渲染K线图、均线图、MACD图，支持多市场切换.
  *
  * 功能：
  * - K线图展示（开盘/最高/最低/收盘）
- * - MA均线叠加（MA5/MA10/MA20）
- * - MACD指标图（MACD线/信号线/柱状图）
- * - 时间范围选择（默认30天，可切换）
+ * - MA均线叠加（MA5/MA10/MA20/MA60）
+ * - MACD指标图（DIF线/DEA线/MACD柱状图）
+ * - 多市场切换（外汇/股票/期货/债券）
  */
 import { ref, computed, onMounted } from 'vue'
-import * as echarts from 'echarts'
+import { init } from 'klinecharts'
 // ...
 </script>
 ```
@@ -459,11 +496,10 @@ function parseCron(cronExpr) {
 #### 1.3.3 关键逻辑注释
 
 ```javascript
-// ECharts图表配置：K线图占50%高度，MACD图占20%高度
-const grid = [
-  { left: '10%', right: '8%', height: '50%' },  // K线图区域
-  { left: '10%', right: '8%', top: '65%', height: '20%' },  // MACD图区域
-]
+// KLineChart配置：主图（K线+均线），副图（成交量+MACD）
+chart.createIndicator('MA', { id: 'candle_pane' })
+chart.createIndicator('VOL', { id: 'sub_pane_1' })
+chart.createIndicator('MACD', { id: 'sub_pane_2' })
 
 // 权限检查：路由守卫拦截未授权访问
 router.beforeEach((to, from, next) => {
@@ -864,9 +900,9 @@ async def get_fx_data_with_cache(symbol: str) -> list:
 |--------|---------|---------|
 | **路由懒加载** | 页面组件按需加载 | Vue defineAsyncComponent |
 | **数据分页** | 列表数据分页加载，避免大量数据 | 默认1000条，分页展示 |
-| **图表优化** | 默认显示30天，用户可切换时间范围 | ECharts dataZoom |
+| **图表优化** | 默认显示30天，用户可切换时间范围 | KLineChart 内置缩放/平移 |
 | **防抖节流** | 搜索、筛选等操作防抖 | lodash.debounce 300ms |
-| **组件复用** | 公共组件封装复用 | DataTable、FXChart等 |
+| **组件复用** | 公共组件封装复用 | ChartDashboard、CronBuilder等 |
 
 **路由懒加载规范**：
 
@@ -874,15 +910,15 @@ async def get_fx_data_with_cache(symbol: str) -> list:
 // GOOD：路由懒加载
 const routes = [
   {
-    path: '/fx-data',
-    component: () => import('@/views/FXData.vue'),  // 懒加载
+    path: '/market-overview',
+    component: () => import('@/views/MarketOverview.vue'),  // 懒加载
   },
 ]
 
 // BAD：直接导入（增加首屏加载）
-import FXData from '@/views/FXData.vue'
+import MarketOverview from '@/views/MarketOverview.vue'
 const routes = [
-  { path: '/fx-data', component: FXData },
+  { path: '/market-overview', component: MarketOverview },
 ]
 ```
 
@@ -956,11 +992,11 @@ async def process_data_good(data):
 | **Python函数** | snake_case | `get_fx_data()`, `calculate_macd()` |
 | **Python类** | PascalCase | `FXDataService`, `AKShareCollector` |
 | **Python常量** | UPPER_SNAKE_CASE | `MAX_DATA_LIMIT`, `CACHE_TTL` |
-| **Vue组件** | PascalCase | `FXChart.vue`, `CronBuilder.vue` |
+| **Vue组件** | PascalCase | `MarketOverview.vue`, `CronBuilder.vue` |
 | **Vue变量** | camelCase | `fxData`, `chartOption` |
 | **Vue函数** | camelCase | `fetchData()`, `renderChart()` |
 | **数据库表** | snake_case | `fx_data`, `collection_tasks` |
-| **API路由** | snake_case | `/api/v1/fx-data` |
+| **API路由** | snake_case | `/api/v1/stock-symbols` |
 
 ### 5.4 类型注解规范
 
@@ -1113,25 +1149,46 @@ const fxData: Ref<FXDataItem[]> = ref([])
 
 ## 九、KLineChart 图表组件编码规范 (v2.5.0 新增)
 
-### 9.1 MarketProfile 配置编写规范
+### 9.1 统一渲染引擎原则（强制）
+
+- **所有市场的 K 线图表必须通过同一个 `ChartDashboard` 组件渲染**，底层使用 KLineChart v10 Canvas 引擎
+- 禁止各市场独立实现图表逻辑或绕过 ChartDashboard 直接使用 KLineChart
+- 路由统一为 `/market-overview` → `MarketOverview` → `ChartDashboard`
+- 新增市场只需注册 `MarketProfile`，无需修改图表组件代码
+- v10 初始化必须包含三个步骤：`setSymbol()` → `setPeriod()` → `setDataLoader()`
+
+### 9.2 声明式市场差异化（强制）
+
+- 市场间差异通过 `MarketProfile.features` 声明式开关控制
+- 禁止在组件中使用 `if (market === 'stock_cn')` 等硬编码判断
+- 新增功能特性应先添加到 `MarketProfile.features` 接口，再在 `ChartDashboard.applyFeatures()` 中实现
+- `features` 字段默认值为 `false`，仅启用的特性设为 `true`
+
+### 9.3 MarketProfile 配置编写规范
 
 - 每个金融市场必须定义完整的 `MarketProfile` 对象
-- `features` 字段按 `false` 为默认值，仅启用的特性设为 `true`
 - `identification.matcher` 必须按优先级排序，`priority` 值越小越优先
 - 新增市场只需 `registerMarketProfile()` 注册，不应修改现有组件
 
-### 9.2 自定义扩展注册规范
+### 9.4 自定义扩展注册规范
 
-- 所有 KLineChart 扩展必须在 `chartExtensions/index.ts` 中注册
+- 所有 KLineChart 扩展必须在 `chartExtensions/` 目录下定义
 - 新指标通过 `registerIndicator()` 全局注册，遵循 KLineChart `IndicatorTemplate` 接口
 - 新覆盖层通过 `registerOverlay()` 全局注册，遵循 KLineChart `OverlayTemplate` 接口
 - 主题通过 `registerStyles(name, styles)` 注册，不应硬编码配色
 - 扩展文件名采用 kebab-case：`limitUpDown.ts` / `openInterest.ts`
 
-### 9.3 数据管道规范
+### 9.5 数据管道规范
 
 - 所有图表数据必须通过 `useDataLoader.convertToKLineData()` 转换
 - 复权处理在数据进入 KLineChart 之前在 `useDataLoader` 层完成
 - `chart.setDataLoader()` 的回调必须从 Pinia Store 或本地数组读取数据
 - 不允许在 DataLoader 回调中发起 HTTP 请求（保持离线）
+
+### 9.6 新增市场流程
+
+1. 在 `useMarketProfile.ts` 定义新的 `MarketProfile` 对象
+2. 如有特有指标，在 `chartExtensions/` 添加注册
+3. 在 `router/index.js` 添加 `/market/{new-market}` 路由
+4. 在 `Sidebar.vue` 添加一级菜单项 `/market-overview`
 - [PHASE1_DESIGN.md](PHASE1_DESIGN.md) - 第一阶段设计文档

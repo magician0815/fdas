@@ -552,7 +552,7 @@ class TestDatasourcesAPIAuthorized:
             {"value": "美元人民币", "code": "USDCNY", "label": "美元人民币"},
             {"value": "欧元美元", "code": "EURUSD", "label": "欧元美元"}
         ]
-        with patch('app.collectors.akshare_collector.akshare_collector.fetch_supported_symbols', return_value=mock_symbols):
+        with patch('app.collectors.akshare_collector.akshare_collector.fetch_symbols_by_config', return_value=mock_symbols):
             test_app.include_router(router, prefix="/api/v1/datasources")
 
             async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:

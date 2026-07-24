@@ -56,7 +56,7 @@
 
 | 权限项 | 具体内容 | 实现方式 |
 |--------|---------|---------|
-| **数据分析查看** | 查看K线图、均线图、MACD图 | FXData.vue |
+| **数据分析查看** | 查看K线图、均线图、MACD图 | MarketOverview.vue |
 | **登录/登出** | Session认证登录 | Login.vue + API |
 
 ### 2.4 权限控制实现
@@ -80,7 +80,7 @@
 | **数据采集层** | Python + AKShare + APScheduler + tenacity | 数据抓取与任务调度 |
 | **数据存储层** | PostgreSQL 16 | 数据持久化，索引优化 |
 | **后端服务层** | FastAPI + SQLAlchemy 2.0 + Pydantic | API服务，业务逻辑 |
-| **前端展示层** | Vue 3 + Element Plus + ECharts | 数据可视化展示 |
+| **前端展示层** | Vue 3 + Element Plus + ECharts, KLineChart(v2.5.0 K线迁移) | 数据可视化展示 |
 | **集成对接层** | 飞书Webhook（预留） | 告警推送接口 |
 
 ### 3.2 容器架构
@@ -147,7 +147,7 @@
        │                   │
        v                   v
 ┌──────────────┐    ┌──────────────┐
-│  ECharts     │    │  TA-Lib      │
+│  KLineChart  │    │  TA-Lib      │
 │  图表渲染    │    │  技术指标    │
 └──────────────┘    └──────────────┘
 ```
@@ -158,7 +158,7 @@
 2. **缓存检查**：内存缓存检查30天内热点数据
 3. **数据查询**：未命中缓存则查询PostgreSQL，利用索引加速
 4. **技术指标**：TA-Lib计算MA/MACD指标
-5. **图表渲染**：ECharts渲染K线图、均线图、MACD图
+5. **图表渲染**：KLineChart渲染K线图（v2.5.0起替换ECharts）
 
 ### 4.3 用户认证流程
 
@@ -305,7 +305,7 @@
 |------|------|------|------|
 | Login | /login | 无 | 用户登录 |
 | Dashboard | / | 登录 | 首页概览 |
-| FXData | /fx-data | 登录 | K线/均线/MACD图表 |
+| MarketOverview | /market-overview | 登录 | K线/均线/MACD图表（KLineChart渲染） |
 | DataSource | /datasource | admin | 数据源配置 |
 | Collection | /collection | admin | 采集任务管理（可视化cron） |
 | Users | /users | admin | 用户管理CRUD |
@@ -401,7 +401,7 @@
 
 | 检查项 | 验收标准 |
 |--------|----------|
-| K线图 | ECharts candlestick图表正确显示OHLC |
+| K线图 | KLineChart K线图表正确显示OHLC |
 | MA均线 | MA指标线叠加在K线图上 |
 | MACD图 | MACD、Signal、Histogram三个子图正确显示 |
 | 日期范围 | 支持选择日期范围查询数据 |

@@ -1,23 +1,5 @@
 <template>
   <div class="chart-toolbar" :class="{ 'toolbar-dark': theme === 'dark' }">
-    <!-- K线类型切换 -->
-    <el-button-group size="small">
-      <el-button
-        :type="chartType === 'candle' ? 'primary' : ''"
-        @click="$emit('chartTypeChange', 'candle')"
-      >
-        蜡烛图
-      </el-button>
-      <el-button
-        :type="chartType === 'line' ? 'primary' : ''"
-        @click="$emit('chartTypeChange', 'line')"
-      >
-        折线图
-      </el-button>
-    </el-button-group>
-
-    <el-divider direction="vertical" />
-
     <!-- 副图开关 -->
     <el-button-group size="small" v-if="subChartSlots.length > 0">
       <el-button
@@ -94,11 +76,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'themeToggle'): void
   (e: 'exportImage'): void
-  (e: 'chartTypeChange', type: 'candle' | 'line'): void
   (e: 'resetView'): void
 }>()
 
-const chartType = ref<'candle' | 'line'>('candle')
 const visibleSubCharts = ref<Record<string, boolean>>({})
 
 // 初始化副图可见状态
@@ -143,7 +123,12 @@ function toggleSubChart(id: string, indicatorName: string): void {
   if (!chart) return
 
   if (visibleSubCharts.value[id]) {
-    chart.createIndicator(indicatorName)
+    if (indicatorName === 'MACD') {
+      chart.createIndicator('MACD')
+      chart.overrideIndicator({ name: 'MACD', styles: { bars: [{ style: 'fill' }] } })
+    } else {
+      chart.createIndicator(indicatorName)
+    }
   } else {
     chart.removeIndicator({ name: indicatorName })
   }

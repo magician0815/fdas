@@ -1,7 +1,7 @@
 <template>
   <div class="sidebar-container">
     <!-- Logo区域 -->
-    <div class="logo-section" @click="$router.push('/fx-data')">
+    <div class="logo-section" @click="$router.push('/dashboard')">
       <div class="logo-icon">
         <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <circle cx="20" cy="20" r="18" stroke="#5a8bff" stroke-width="2" fill="none"/>
@@ -23,61 +23,55 @@
       active-text-color="#ffffff"
       router
     >
-      <el-menu-item index="/fx-data">
-        <el-icon><TrendCharts /></el-icon>
-        <template #title>外汇数据</template>
+      <el-menu-item index="/market-overview">
+        <el-icon><DataAnalysis /></el-icon>
+        <template #title>行情数据</template>
       </el-menu-item>
 
-      <el-sub-menu index="market-data" v-if="!collapsed">
+      <el-sub-menu index="data-collect" v-if="isAdmin && !collapsed">
         <template #title>
-          <el-icon><DataLine /></el-icon>
-          <span>多市场数据</span>
+          <el-icon><Connection /></el-icon>
+          <span>数据采集</span>
         </template>
-        <el-menu-item index="/stock-data">
-          <el-icon><TrendCharts /></el-icon>
-          <template #title>股票数据</template>
+        <el-menu-item index="/datasource">
+          <el-icon><Connection /></el-icon>
+          <template #title>数据源管理</template>
         </el-menu-item>
-        <el-menu-item index="/futures-data">
-          <el-icon><TrendCharts /></el-icon>
-          <template #title>期货数据</template>
-        </el-menu-item>
-        <el-menu-item index="/bond-data">
-          <el-icon><TrendCharts /></el-icon>
-          <template #title>债券数据</template>
+        <el-menu-item index="/collection">
+          <el-icon><Timer /></el-icon>
+          <template #title>采集任务</template>
         </el-menu-item>
       </el-sub-menu>
 
-      <el-menu-item index="/stock-data" v-if="collapsed">
-        <el-icon><TrendCharts /></el-icon>
-        <template #title>股票数据</template>
-      </el-menu-item>
-
-      <el-menu-item index="/futures-data" v-if="collapsed">
-        <el-icon><TrendCharts /></el-icon>
-        <template #title>期货数据</template>
-      </el-menu-item>
-
-      <el-menu-item index="/bond-data" v-if="collapsed">
-        <el-icon><TrendCharts /></el-icon>
-        <template #title>债券数据</template>
-      </el-menu-item>
-
-      <el-menu-item index="/datasource" v-if="isAdmin">
+      <el-menu-item index="/datasource" v-if="isAdmin && collapsed">
         <el-icon><Connection /></el-icon>
         <template #title>数据源管理</template>
       </el-menu-item>
-
-      <el-menu-item index="/collection" v-if="isAdmin">
+      <el-menu-item index="/collection" v-if="isAdmin && collapsed">
         <el-icon><Timer /></el-icon>
         <template #title>采集任务</template>
       </el-menu-item>
 
-      <el-menu-item index="/users" v-if="isAdmin">
+      <el-sub-menu index="system-mgmt" v-if="isAdmin && !collapsed">
+        <template #title>
+          <el-icon><Setting /></el-icon>
+          <span>系统管理</span>
+        </template>
+        <el-menu-item index="/users">
+          <el-icon><User /></el-icon>
+          <template #title>用户管理</template>
+        </el-menu-item>
+        <el-menu-item index="/logs">
+          <el-icon><Document /></el-icon>
+          <template #title>系统日志</template>
+        </el-menu-item>
+      </el-sub-menu>
+
+      <el-menu-item index="/users" v-if="isAdmin && collapsed">
         <el-icon><User /></el-icon>
         <template #title>用户管理</template>
       </el-menu-item>
-
-      <el-menu-item index="/logs" v-if="isAdmin">
+      <el-menu-item index="/logs" v-if="isAdmin && collapsed">
         <el-icon><Document /></el-icon>
         <template #title>系统日志</template>
       </el-menu-item>
@@ -109,7 +103,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { TrendCharts, Connection, Timer, User, Document, Expand, Fold, DataLine } from '@element-plus/icons-vue'
+import { Connection, Timer, User, Document, Expand, Fold, Setting, DataAnalysis } from '@element-plus/icons-vue'
 
 // Props
 defineProps({
@@ -190,6 +184,20 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 
 .el-menu:not(.el-menu--collapse) {
   width: 180px;
+}
+
+/* 一级菜单图标宽度统一，文字对齐 */
+.el-menu-item,
+.el-sub-menu__title {
+  padding-left: 20px !important;
+}
+
+.el-menu-item .el-icon,
+.el-sub-menu__title .el-icon {
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+  margin-right: 12px;
 }
 
 .el-menu-item {

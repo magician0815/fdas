@@ -300,54 +300,131 @@ class AKShareCollector:
         end_date: date,
     ) -> List[Dict]:
         """
-        采集外汇日线行情数据.
-
-        调用AKShare forex_hist接口获取历史数据.
-
-        Args:
-            symbol_name: 货币对名称（中文，如"美元人民币"，用于AKShare接口）
-            symbol_code: 货币对代码（英文，如"USDCNY"，用于数据库存储）
-            start_date: 开始日期
-            end_date: 结束日期
-
-        Returns:
-            List[Dict]: 汇率数据列表，格式适配数据库存储
-
-        Raises:
-            Exception: 采集失败（重试3次后抛出）
+        采集外汇日线行情数据（主源东方财富 + 备源中国银行牌价）.
         """
         logger.info(f"开始采集外汇数据: {symbol_name} ({symbol_code}), {start_date} ~ {end_date}")
 
+        # 主源：东方财富HTTP API
         try:
-            # Python 3.11+ 使用 asyncio.to_thread，旧版本使用 run_in_executor
-            if hasattr(asyncio, 'to_thread'):
-                df = await asyncio.to_thread(
-                    self._call_forex_hist,
-                    symbol_name,
-                    symbol_code,
-                    start_date,
-                    end_date,
-                )
-            else:
-                # Python 3.8-3.10 兼容
-                loop = asyncio.get_event_loop()
-                df = await loop.run_in_executor(
-                    None, self._call_forex_hist, symbol_name, symbol_code, start_date, end_date
-                )
-
-            if df is None or df.empty:
-                logger.warning(f"采集数据为空: {symbol_name}")
-                return []
-
-            # 转换数据格式
-            records = self._transform_data(df, symbol_code)
-
-            logger.info(f"成功采集 {len(records)} 条 {symbol_name} 数据")
-            return records
-
+            df = await asyncio.to_thread(self._call_forex_hist, symbol_name, symbol_code, start_date, end_date)
+            if df is not None and not df.empty:
+                records = self._transform_data(df, symbol_code)
+                logger.info(f"东方财富源成功采集 {len(records)} 条 {symbol_name} 数据")
+                return records
+            logger.warning(f"东方财富源返回空数据: {symbol_name}")
         except Exception as e:
-            logger.error(f"采集外汇数据失败: {str(e)}")
-            raise
+            logger.warning(f"东方财富源采集失败: {symbol_name}, {str(e)[:100]}")
+
+        # 备源：中国银行牌价 (currency_boc_sina)
+        try:
+            logger.info(f"回退到中国银行牌价源: {symbol_name} ({symbol_code})")
+            df_boc = await asyncio.to_thread(self._call_forex_boc, symbol_name, symbol_code, start_date, end_date)
+            if df_boc is not None and not df_boc.empty:
+                records = self._transform_forex_boc_data(df_boc, symbol_code)
+                logger.info(f"中国银行牌价源成功采集 {len(records)} 条 {symbol_name} 数据")
+                return records
+            logger.warning(f"中国银行牌价源返回空数据: {symbol_name}")
+        except Exception as e2:
+            logger.error(f"中国银行牌价源采集也失败: {symbol_name}, {str(e2)[:100]}")
+
+        raise Exception(f"所有外汇数据源均无法采集 {symbol_name}: 东方财富和中国银行牌价均失败")
+
+    def _call_forex_boc(
+        self,
+        symbol_name: str,
+        symbol_code: str,
+        start_date: date,
+        end_date: date,
+    ):
+        """
+        调用中国银行牌价API (currency_boc_sina) 获取外汇参考汇率.
+
+        作为东方财富源的备选，提供央行中间价数据（非OHLC格式）.
+
+        Args:
+            symbol_name: 货币对名称（中文，如"美元人民币"）
+            symbol_code: 货币对代码
+            start_date: 开始日期（用于筛选）
+            end_date: 结束日期（用于筛选）
+
+        Returns:
+            DataFrame: 含OHLC格式的汇率数据
+        """
+        import akshare as ak
+        import pandas as pd
+
+        # 从货币对名称提取基准货币中文名（如"美元离岸人民币" → "美元"）
+        currency_map = {
+            "USD": "美元", "EUR": "欧元", "JPY": "日元", "GBP": "英镑",
+            "HKD": "港币", "AUD": "澳大利亚元", "CAD": "加拿大元",
+            "CHF": "瑞士法郎", "NZD": "新西兰元", "SGD": "新加坡元",
+            "KRW": "韩国元", "MOP": "澳门元", "MYR": "马来西亚林吉特",
+            "RUB": "俄罗斯卢布", "ZAR": "南非兰特", "THB": "泰国铢",
+            "CNY": "人民币", "CNH": "人民币",
+        }
+        base = symbol_code[:3]
+        boc_name = currency_map.get(base)
+        if not boc_name:
+            # 回退：在中文名称中匹配已知货币名
+            for name in currency_map.values():
+                if name in symbol_name:
+                    boc_name = name
+                    break
+            if not boc_name:
+                boc_name = "美元"  # 最终降级
+
+        df = ak.currency_boc_sina(symbol=boc_name)
+
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        # BOC column mapping: 日期→date, 央行中间价→close/open/high/low
+        df = df.rename(columns={"日期": "date", "央行中间价": "close"})
+        df["open"] = df["close"]
+        df["high"] = df["close"]
+        df["low"] = df["close"]
+        df["volume"] = 0
+        df["amount"] = 0.0
+
+        # Filter by date range
+        df["date"] = pd.to_datetime(df["date"])
+        df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+        df = df.sort_values("date")
+
+        if len(df) >= 2:
+            df["change_pct"] = df["close"].pct_change() * 100
+            df["change_amount"] = df["close"].diff()
+
+        cols = ["date", "open", "high", "low", "close", "volume", "amount"]
+        for c in ["change_pct", "change_amount"]:
+            if c in df.columns:
+                cols.append(c)
+        return df[cols]
+
+    def _transform_forex_boc_data(self, df, symbol_code: str) -> List[Dict]:
+        """
+        转换中国银行牌价数据为统一格式.
+        """
+        records = []
+        for _, row in df.iterrows():
+            date_val = row["date"]
+            if hasattr(date_val, 'strftime'):
+                date_str = date_val.strftime("%Y-%m-%d")
+            else:
+                date_str = str(date_val)[:10]
+            records.append({
+                "date": date_str,
+                "code": symbol_code,
+                "open": self._safe_float(row.get("open")),
+                "high": self._safe_float(row.get("high")),
+                "low": self._safe_float(row.get("low")),
+                "close": self._safe_float(row.get("close")),
+                "volume": int(self._safe_float(row.get("volume", 0)) or 0),
+                "change_pct": self._safe_float(row.get("change_pct") if "change_pct" in row.index else None),
+                "change_amount": self._safe_float(row.get("change_amount") if "change_amount" in row.index else None),
+                "amplitude": 0,
+            })
+        return records
 
     def _call_forex_hist(
         self,
@@ -527,51 +604,51 @@ class AKShareCollector:
         adjust: str = "",
     ) -> List[Dict]:
         """
-        采集A股日线行情数据。
-
-        调用AKShare stock_zh_a_daily接口获取历史数据。
+        采集A股日线行情数据（主源新浪 + 备源腾讯自动回退）.
 
         Args:
-            symbol_name: 股票名称（中文如"贵州茅台"）
+            symbol_name: 股票名称
             symbol_code: 股票代码（sh600519或sz000001）
             start_date: 开始日期
             end_date: 结束日期
-            adjust: 复权类型 (""=不复权, "qfq"=前复权, "hfq"=后复权)
+            adjust: 复权类型
 
         Returns:
             List[Dict]: 股票行情数据列表
         """
         logger.info(f"开始采集A股数据: {symbol_name} ({symbol_code}), {start_date} ~ {end_date}, adjust={adjust}")
 
+        # 主源：新浪 stock_zh_a_daily
         try:
-            # Python 3.11+ 使用 asyncio.to_thread，旧版本使用 run_in_executor
-            if hasattr(asyncio, 'to_thread'):
-                df = await asyncio.to_thread(
-                    self._call_stock_a_daily,
-                    symbol_code,
-                    start_date,
-                    end_date,
-                    adjust,
-                )
-            else:
-                # Python 3.8-3.10 兼容
-                loop = asyncio.get_event_loop()
-                df = await loop.run_in_executor(
-                    None, self._call_stock_a_daily, symbol_code, start_date, end_date, adjust
-                )
-
-            if df is None or df.empty:
-                logger.warning(f"采集A股数据为空: {symbol_name}")
-                return []
-
-            records = self._transform_stock_data(df, symbol_code)
-
-            logger.info(f"成功采集 {len(records)} 条 {symbol_name} 数据")
-            return records
-
+            df = await asyncio.to_thread(self._call_stock_a_daily, symbol_code, start_date, end_date, adjust)
+            if df is not None and not df.empty:
+                records = self._transform_stock_data(df, symbol_code)
+                logger.info(f"新浪源成功采集 {len(records)} 条 {symbol_name} 数据")
+                return records
+            logger.warning(f"新浪源返回空数据: {symbol_name}")
         except Exception as e:
-            logger.error(f"采集A股数据失败: {str(e)}")
-            raise
+            logger.warning(f"新浪源采集失败: {symbol_name}, {str(e)[:100]}")
+
+        # 备源：腾讯 stock_zh_a_hist_tx
+        try:
+            logger.info(f"回退到腾讯源: {symbol_name} ({symbol_code})")
+            df_tx = await asyncio.to_thread(self._call_stock_a_daily_tx, symbol_code, start_date, end_date, adjust)
+            if df_tx is not None and not df_tx.empty:
+                # 腾讯源无volume字段，补充默认值
+                if "volume" not in df_tx.columns:
+                    df_tx["volume"] = 0
+                # 腾讯源无amount列名差异，统一处理
+                if "amount" in df_tx.columns and "turnover" not in df_tx.columns:
+                    pass  # amount already present
+                records = self._transform_stock_data(df_tx, symbol_code)
+                logger.info(f"腾讯源成功采集 {len(records)} 条 {symbol_name} 数据")
+                return records
+            logger.warning(f"腾讯源返回空数据: {symbol_name}")
+        except Exception as e2:
+            logger.error(f"腾讯源采集也失败: {symbol_name}, {str(e2)[:100]}")
+
+        # 两个源都失败
+        raise Exception(f"所有数据源均无法采集 {symbol_name}: 新浪和腾讯源均失败")
 
     def _call_stock_a_daily(
         self,
@@ -611,6 +688,56 @@ class AKShareCollector:
         df = df.sort_values("date")
 
         # 计算涨跌幅和振幅 (新浪源不直接提供)
+        if "change_pct" not in df.columns and len(df) >= 2:
+            df["change_pct"] = df["close"].pct_change() * 100
+        if "change_amount" not in df.columns and len(df) >= 2:
+            df["change_amount"] = df["close"].diff()
+        if "amplitude" not in df.columns:
+            df["amplitude"] = (df["high"] - df["low"]) / df["close"].shift(1) * 100
+
+        return df
+
+    def _call_stock_a_daily_tx(
+        self,
+        symbol_code: str,
+        start_date: date,
+        end_date: date,
+        adjust: str = "",
+    ):
+        """
+        调用AKShare stock_zh_a_hist_tx (腾讯源) 获取A股数据.
+
+        作为新浪源的备选，腾讯源稳定但缺少volume字段.
+        支持复权参数 qfq/hfq.
+
+        Args:
+            symbol_code: 带交易所前缀的代码 (sh600519, sz000001)
+            start_date: 开始日期
+            end_date: 结束日期
+            adjust: 复权类型
+
+        Returns:
+            DataFrame: API返回的数据
+        """
+        import akshare as ak
+        import pandas as pd
+
+        df = ak.stock_zh_a_hist_tx(
+            symbol=symbol_code,
+            start_date=start_date.strftime("%Y%m%d"),
+            end_date=end_date.strftime("%Y%m%d"),
+            adjust=adjust,
+        )
+
+        if df is None or df.empty:
+            return df
+
+        df = df.sort_values("date")
+
+        # 腾讯源字段: date, open, close, high, low, amount (无volume)
+        if "volume" not in df.columns:
+            df["volume"] = 0
+        # 计算涨跌幅和振幅
         if "change_pct" not in df.columns and len(df) >= 2:
             df["change_pct"] = df["close"].pct_change() * 100
         if "change_amount" not in df.columns and len(df) >= 2:
@@ -719,8 +846,14 @@ class AKShareCollector:
         symbol_mapping = config.get("symbol_mapping", {})
         parser_cfg = config.get("data_parser", {})
 
-        # 应用标的映射
-        api_symbol = symbol_mapping.get(symbol, symbol)
+        # 应用标的映射（config 优先，回退到 AKShare 自身的 symbol_market_map）
+        api_symbol = symbol_mapping.get(symbol)
+        if api_symbol is None:
+            try:
+                from akshare.forex import forex_em
+                api_symbol = forex_em.symbol_market_map.get(symbol, symbol)
+            except ImportError:
+                api_symbol = symbol
 
         # 注入请求参数中的动态值
         for key, val in params.items():
@@ -962,8 +1095,13 @@ class AKShareCollector:
             "stock_us_daily": self.collect_stock_us_daily,
             "stock_hk_daily": self.collect_stock_hk_daily,
             "futures_zh_daily_sina": self.collect_futures_daily,
+            "futures_foreign_hist": self.collect_foreign_futures_daily,
+            "crypto_ccxt": self.collect_crypto_daily,
             "bond_cn_daily": self.collect_bond_daily,
             "bond_us_daily": self.collect_bond_us_daily,
+            "bond_zh_us_rate": self.collect_bond_us_daily,
+            "bond_gb_zh_sina": self.collect_bond_gb_zh_sina,
+            "bond_gb_us_sina": self.collect_bond_gb_us_sina,
         }
 
         collector_method = dispatch_map.get(interface)
@@ -997,18 +1135,28 @@ class AKShareCollector:
             raise ValueError("symbol_fetch.interface 未配置")
 
         # 分派到对应接口的标的获取方法
-        if interface == "stock_zh_a_spot_em":
+        if interface == "forex_em":
+            return await self.fetch_supported_symbols()
+        elif interface in ("stock_zh_a_spot_em", "stock_zh_a_spot"):
             return await self._fetch_stock_cn_symbols()
-        elif interface == "stock_us_spot_em":
+        elif interface in ("stock_us_spot_em", "stock_us_spot"):
             return await self._fetch_stock_us_symbols()
-        elif interface == "stock_hk_spot_em":
+        elif interface in ("stock_hk_spot_em", "stock_hk_spot"):
             return await self._fetch_stock_hk_symbols()
         elif interface == "futures_zh_spot_em":
             return await self._fetch_futures_symbols()
+        elif interface == "futures_foreign_sina":
+            return await self._fetch_foreign_futures_symbols()
+        elif interface == "crypto_ccxt":
+            return await self._fetch_crypto_symbols()
         elif interface == "bond_zh_spot_em":
             return await self._fetch_bond_cn_symbols()
+        elif interface == "bond_gb_zh_sina":
+            return await self._fetch_bond_gb_zh_sina_symbols()
         elif interface == "bond_gb_us_sina":
             return await self._fetch_bond_us_symbols()
+        elif interface == "bond_zh_us_rate":
+            return await self._fetch_bond_yield_symbols()
         else:
             logger.warning(f"不支持的标的获取接口: {interface}")
             return []
@@ -1067,7 +1215,7 @@ class AKShareCollector:
             if market == "us":
                 df = await asyncio.to_thread(
                     ak.stock_us_daily,
-                    symbol=symbol_code.lower(),
+                    symbol=symbol_code.upper(),
                     adjust="",
                 )
             elif market == "hk":
@@ -1124,10 +1272,20 @@ class AKShareCollector:
         end_date: date,
     ) -> List[Dict]:
         """
-        采集国内债券日线行情数据（骨架）.
+        采集国内债券收益率数据 (bond_zh_us_rate).
+
+        与美债共用同一接口，根据 symbol_name 匹配对应的收益率列.
         """
         logger.info(f"开始采集国内债券数据: {symbol_name} ({symbol_code}), {start_date} ~ {end_date}")
-        return await self._call_bond_daily("cn", symbol_code, start_date, end_date)
+        try:
+            return await asyncio.wait_for(
+                self._call_bond_yield(symbol_name, symbol_code, start_date, end_date, "cn"),
+                timeout=45
+            )
+        except asyncio.TimeoutError:
+            raise Exception(f"国内债券采集超时(45s): {symbol_name}")
+        except Exception:
+            raise
 
     async def collect_bond_us_daily(
         self,
@@ -1137,10 +1295,213 @@ class AKShareCollector:
         end_date: date,
     ) -> List[Dict]:
         """
-        采集美国债券日线行情数据（骨架）.
+        采集美国债券收益率数据 (bond_zh_us_rate).
+
+        与国内债券共用同一接口，根据 symbol_name 匹配对应的收益率列.
         """
         logger.info(f"开始采集美国债券数据: {symbol_name} ({symbol_code}), {start_date} ~ {end_date}")
-        return await self._call_bond_daily("us", symbol_code, start_date, end_date)
+
+        try:
+            records = await asyncio.wait_for(
+                self._call_bond_yield(symbol_name, symbol_code, start_date, end_date, "us"),
+                timeout=45
+            )
+            if records:
+                logger.info(f"bond_zh_us_rate 成功采集 {len(records)} 条 {symbol_name} 数据")
+                return records
+            logger.warning(f"bond_zh_us_rate 返回空数据: {symbol_name}")
+        except asyncio.TimeoutError:
+            logger.error(f"bond_zh_us_rate 超时(45s): {symbol_name}")
+        except Exception as e:
+            logger.error(f"bond_zh_us_rate 采集失败: {symbol_name}, {str(e)[:120]}")
+
+        raise Exception(f"债券数据源采集失败 {symbol_name}: bond_zh_us_rate 不可用")
+
+    async def collect_bond_gb_zh_sina(
+        self,
+        symbol_name: str,
+        symbol_code: str,
+        start_date: date,
+        end_date: date,
+    ) -> List[Dict]:
+        """
+        采集中国国债收益率数据 (bond_gb_zh_sina, 新浪源).
+
+        返回标准OHLC格式，open/high/low/close 均为收益率值.
+        """
+        import akshare as ak
+        import pandas as pd
+
+        logger.info(f"开始采集中国国债(sina): {symbol_name}, {start_date} ~ {end_date}")
+        df = await asyncio.wait_for(
+            asyncio.to_thread(ak.bond_gb_zh_sina, symbol=symbol_name), timeout=30
+        )
+        if df is None or df.empty:
+            return []
+
+        df = df.rename(columns={"date": "date"}) if "date" in df.columns else df
+        if "日期" in df.columns:
+            df = df.rename(columns={"日期": "date"})
+        df["date"] = pd.to_datetime(df["date"])
+        df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+        df = df.sort_values("date")
+
+        records = []
+        for _, row in df.iterrows():
+            records.append({
+                "date": row["date"].strftime("%Y-%m-%d"),
+                "open": self._safe_float(row.get("open")),
+                "high": self._safe_float(row.get("high")),
+                "low": self._safe_float(row.get("low")),
+                "close": self._safe_float(row.get("close")),
+                "volume": int(self._safe_float(row.get("volume", 0)) or 0),
+            })
+        logger.info(f"bond_gb_zh_sina 成功采集 {len(records)} 条 {symbol_name}")
+        return records
+
+    async def collect_bond_gb_us_sina(
+        self,
+        symbol_name: str,
+        symbol_code: str,
+        start_date: date,
+        end_date: date,
+    ) -> List[Dict]:
+        """
+        采集美国国债收益率数据 (bond_gb_us_sina, 新浪源).
+
+        返回标准OHLC格式，open/high/low/close 均为收益率值.
+        """
+        import akshare as ak
+        import pandas as pd
+
+        logger.info(f"开始采集美国国债(sina): {symbol_name}, {start_date} ~ {end_date}")
+        df = await asyncio.wait_for(
+            asyncio.to_thread(ak.bond_gb_us_sina, symbol=symbol_name), timeout=30
+        )
+        if df is None or df.empty:
+            return []
+
+        df = df.rename(columns={"date": "date"}) if "date" in df.columns else df
+        if "日期" in df.columns:
+            df = df.rename(columns={"日期": "date"})
+        df["date"] = pd.to_datetime(df["date"])
+        df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+        df = df.sort_values("date")
+
+        records = []
+        for _, row in df.iterrows():
+            records.append({
+                "date": row["date"].strftime("%Y-%m-%d"),
+                "open": self._safe_float(row.get("open")),
+                "high": self._safe_float(row.get("high")),
+                "low": self._safe_float(row.get("low")),
+                "close": self._safe_float(row.get("close")),
+                "volume": int(self._safe_float(row.get("volume", 0)) or 0),
+            })
+        logger.info(f"bond_gb_us_sina 成功采集 {len(records)} 条 {symbol_name}")
+        return records
+
+    async def _call_bond_yield(
+        self,
+        symbol_name: str,
+        symbol_code: str,
+        start_date: date,
+        end_date: date,
+        market: str = "us",
+    ) -> List[Dict]:
+        """
+        统一债券收益率采集 (bond_zh_us_rate).
+
+        单次调用返回中美两国各期限收益率, 根据 symbol_name 提取对应列.
+        数据量~9300条从1990年至今.
+
+        Args:
+            symbol_name: 债券名称（如"美国10年期国债" / "中国国债收益率10年"）
+            symbol_code: 债券代码
+            start_date: 开始日期
+            end_date: 结束日期
+            market: cn/us
+
+        Returns:
+            List[Dict]: OHLC格式的收益率数据
+        """
+        import akshare as ak
+        import pandas as pd
+
+        # 名称→列名映射
+        column_map = {
+            # 中国国债
+            "中国国债收益率2年": "中国国债收益率2年",
+            "中国国债收益率5年": "中国国债收益率5年",
+            "中国国债收益率10年": "中国国债收益率10年",
+            "中国国债收益率30年": "中国国债收益率30年",
+            # 美国国债
+            "美国国债收益率2年": "美国国债收益率2年",
+            "美国国债收益率5年": "美国国债收益率5年",
+            "美国国债收益率10年": "美国国债收益率10年",
+            "美国国债收益率30年": "美国国债收益率30年",
+        }
+
+        # 兼容旧的 symbol_name 格式
+        legacy_map = {
+            "美国10年期国债": "美国国债收益率10年",
+            "美国2年期国债": "美国国债收益率2年",
+            "美国5年期国债": "美国国债收益率5年",
+            "美国30年期国债": "美国国债收益率30年",
+            "中国10年期国债": "中国国债收益率10年",
+            "中国2年期国债": "中国国债收益率2年",
+            "中国5年期国债": "中国国债收益率5年",
+        }
+
+        rate_column = column_map.get(symbol_name) or legacy_map.get(symbol_name)
+        if not rate_column:
+            for name, col in {**column_map, **legacy_map}.items():
+                if name in symbol_name or (symbol_name in name):
+                    rate_column = col
+                    break
+        if not rate_column:
+            raise ValueError(f"无法匹配债券期限: {symbol_name}")
+
+        df = await asyncio.wait_for(asyncio.to_thread(ak.bond_zh_us_rate), timeout=30)
+
+        if df is None or df.empty:
+            return []
+
+        if rate_column not in df.columns:
+            raise ValueError(f"中美利差数据中无 '{rate_column}' 列，可用列: {df.columns.tolist()}")
+
+        # 提取日期和目标列，转换为OHLC格式
+        df = df[["日期", rate_column]].copy()
+        df = df.rename(columns={"日期": "date", rate_column: "close"})
+        df["date"] = pd.to_datetime(df["date"])
+        df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+        df = df.sort_values("date")
+
+        if df.empty:
+            return []
+
+        df["open"] = df["close"]
+        df["high"] = df["close"]
+        df["low"] = df["close"]
+        df["volume"] = 0
+
+        if len(df) >= 2:
+            df["change_pct"] = df["close"].pct_change() * 100
+            df["change_amount"] = df["close"].diff()
+
+        records = []
+        for _, row in df.iterrows():
+            records.append({
+                "date": row["date"].strftime("%Y-%m-%d"),
+                "open": self._safe_float(row.get("open")),
+                "high": self._safe_float(row.get("high")),
+                "low": self._safe_float(row.get("low")),
+                "close": self._safe_float(row.get("close")),
+                "volume": int(self._safe_float(row.get("volume", 0)) or 0),
+                "change_pct": self._safe_float(row.get("change_pct") if "change_pct" in row.index else None),
+                "change_amount": self._safe_float(row.get("change_amount") if "change_amount" in row.index else None),
+            })
+        return records
 
     async def _call_bond_daily(
         self,
@@ -1166,15 +1527,12 @@ class AKShareCollector:
 
         try:
             if market == "cn":
-                # 国内债券：新浪财经沪深债券
-                # 自动添加交易所前缀
                 if not symbol_code.lower().startswith(("sh", "sz", "bj")):
                     symbol_code = ("sh" if symbol_code.startswith("0") or symbol_code.startswith("1") else "sz") + symbol_code
-                df = await asyncio.to_thread(ak.bond_zh_hs_daily, symbol=symbol_code)
+                df = await asyncio.wait_for(asyncio.to_thread(ak.bond_zh_hs_daily, symbol=symbol_code), timeout=30)
             elif market == "us":
-                # 美国国债：新浪财经美国国债收益率
-                symbol = symbol_code if symbol_code else "美国10年期国债"
-                df = await asyncio.to_thread(ak.bond_gb_us_sina, symbol=symbol)
+                # 美债不再走此路径, 统一走 collect_bond_us_daily → bond_zh_us_rate
+                raise ValueError("美债请使用 bond_zh_us_rate 接口")
             else:
                 raise ValueError(f"不支持的债券市场: {market}")
 
@@ -1236,22 +1594,20 @@ class AKShareCollector:
         Returns:
             List[Dict]: 期货行情数据列表
         """
-        logger.info(f"开始采集期货数据: {symbol_name} ({symbol_code}), {start_date} ~ {end_date}")
+        # 从合约代码提取品种代码（如 AU9999 → AU0, IF9999 → IF0）
+        import re
+        variety_match = re.match(r'^([A-Za-z]+)', symbol_code)
+        sina_symbol = f"{variety_match.group(1)}0" if variety_match else symbol_code
+
+        logger.info(f"开始采集期货数据: {symbol_name} ({symbol_code}->{sina_symbol}), {start_date} ~ {end_date}")
 
         try:
-            # Python 3.11+ 使用 asyncio.to_thread
-            if hasattr(asyncio, 'to_thread'):
-                df = await asyncio.to_thread(
-                    self._call_futures_daily,
-                    symbol_code,
-                    start_date,
-                    end_date,
-                )
-            else:
-                loop = asyncio.get_event_loop()
-                df = await loop.run_in_executor(
-                    None, self._call_futures_daily, symbol_code, start_date, end_date
-                )
+            df = await asyncio.to_thread(
+                self._call_futures_daily,
+                sina_symbol,
+                start_date,
+                end_date,
+            )
 
             if df is None or df.empty:
                 logger.warning(f"采集期货数据为空: {symbol_name}")
@@ -1265,6 +1621,30 @@ class AKShareCollector:
         except Exception as e:
             logger.error(f"采集期货数据失败: {str(e)}")
             raise
+
+    def _transform_futures_data(self, df, symbol_code: str) -> List[Dict]:
+        """将 futures_main_sina 返回的 DataFrame 转换为标准 OHLC 记录."""
+        from datetime import date as DateType
+        records = []
+        for _, row in df.iterrows():
+            date_val = row["date"]
+            if hasattr(date_val, "date"):
+                date_val = date_val.date()
+            elif hasattr(date_val, "strftime"):
+                date_val = DateType.fromisoformat(date_val.strftime("%Y-%m-%d"))
+            else:
+                date_val = DateType.fromisoformat(str(date_val)[:10])
+            records.append({
+                "date": date_val,
+                "open": self._safe_float(row.get("open")),
+                "high": self._safe_float(row.get("high")),
+                "low": self._safe_float(row.get("low")),
+                "close": self._safe_float(row.get("close")),
+                "volume": int(self._safe_float(row.get("volume", 0)) or 0),
+                "open_interest": int(self._safe_float(row.get("open_interest", 0)) or 0),
+                "settle_price": self._safe_float(row.get("settle_price")),
+            })
+        return records
 
     def _call_futures_daily(
         self,
@@ -1289,8 +1669,9 @@ class AKShareCollector:
         import akshare as ak
         import pandas as pd
 
-        # get_futures_daily 返回全市场期货日线（当前仅 CFFEX 可用）
-        df = ak.get_futures_daily(
+        # futures_main_sina 覆盖6大交易所82个品种
+        df = ak.futures_main_sina(
+            symbol=symbol_code,
             start_date=start_date.strftime("%Y%m%d"),
             end_date=end_date.strftime("%Y%m%d"),
         )
@@ -1298,110 +1679,72 @@ class AKShareCollector:
         if df is None or df.empty:
             return pd.DataFrame()
 
-        # 按品种过滤
-        if "variety" in df.columns:
-            df = df[df["variety"] == symbol_code]
-        elif "symbol" in df.columns:
-            df = df[df["symbol"].str.startswith(symbol_code)]
-
-        if df.empty:
-            logger.warning(f"期货品种 {symbol_code} 在 {start_date}~{end_date} 无数据 "
-                          f"(get_futures_daily 当前仅覆盖 CFFEX 金融期货)")
-
-        # 按日期排序
-        if "date" in df.columns:
-            df["date"] = pd.to_datetime(df["date"])
-            df = df.sort_values("date")
+        # 统一列名为英文
+        df = df.rename(columns={
+            "日期": "date", "开盘价": "open", "最高价": "high",
+            "最低价": "low", "收盘价": "close", "成交量": "volume",
+            "持仓量": "open_interest", "动态结算价": "settle_price",
+        })
+        df["date"] = pd.to_datetime(df["date"])
 
         return df
 
-    def _transform_futures_data(self, df, symbol_code: str) -> List[Dict]:
-        """
-        转换期货数据格式为数据库存储格式.
-
-        兼容 get_futures_daily (CFFEX) 和 futures_zh_daily_sina (旧新浪源) 字段.
-        """
-        import pandas as pd
-
-        records = []
-        for _, row in df.iterrows():
-            # 计算涨跌幅和振幅 (get_futures_daily 有 pre_settle 可用)
-            close_val = self._safe_float(row.get("close"))
-            pre_settle = self._safe_float(row.get("pre_settle"))
-            open_val = self._safe_float(row.get("open"))
-            high_val = self._safe_float(row.get("high"))
-            low_val = self._safe_float(row.get("low"))
-
-            change_pct = self._safe_float(row.get("pct_chg") or row.get("changepercent"))
-            if (change_pct is None or change_pct != change_pct) and pre_settle and close_val:
-                change_pct = (close_val - pre_settle) / pre_settle * 100
-
-            amplitude = self._safe_float(row.get("amplitude"))
-            if (amplitude is None or amplitude != amplitude) and pre_settle and open_val:
-                amplitude = (high_val - low_val) / pre_settle * 100
-
-            record = {
-                "date": pd.to_datetime(row["date"]).strftime("%Y-%m-%d"),
-                "open": open_val,
-                "high": high_val,
-                "low": low_val,
-                "close": close_val,
-                "volume": int(self._safe_float(row.get("volume", 0)) or 0),
-                "amount": self._safe_float(row.get("amount") or row.get("turnover")),
-                "open_interest": self._safe_float(row.get("open_interest")),
-                "settle": self._safe_float(row.get("settle")),
-                "change_pct": change_pct,
-                "change_amount": self._safe_float(row.get("change_amount") or row.get("change")),
-                "amplitude": amplitude,
-            }
-            records.append(record)
-
-        return records
-
-    # ========== 标的获取方法 ==========
-
     async def _fetch_stock_cn_symbols(self) -> List[Dict]:
-        """获取A股标的列表."""
+        """获取A股标的列表（新浪源 stock_zh_a_spot，5511只）."""
         try:
             import akshare as ak
             import pandas as pd
 
-            # 调用AKShare接口获取A股实时行情
-            df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
+            # 新浪源A股实时行情（stock_zh_a_spot_em 东方财富源被封不可用）
+            df = await asyncio.to_thread(ak.stock_zh_a_spot)
 
             # 转换为统一格式
             records = []
             for _, row in df.iterrows():
-                # 判断交易所：上证以sh开头，深证以sz开头，北交所以bj开头
-                code = str(row.get("代码", ""))
-                if code.startswith("6"):
+                raw_code = str(row.get("代码", ""))
+                # 新浪源代码带交易所前缀 (sh600519, sz000001, bj920000)
+                if raw_code.startswith("sh"):
                     exchange = "sh"
-                elif code.startswith("0") or code.startswith("3"):
+                    code = raw_code[2:]
+                elif raw_code.startswith("sz"):
                     exchange = "sz"
-                elif code.startswith("8") or code.startswith("4"):
+                    code = raw_code[2:]
+                elif raw_code.startswith("bj"):
                     exchange = "bj"
+                    code = raw_code[2:]
+                elif raw_code.startswith("6"):
+                    exchange = "sh"
+                    code = raw_code
+                elif raw_code.startswith(("0", "3")):
+                    exchange = "sz"
+                    code = raw_code
+                elif raw_code.startswith(("4", "8")):
+                    exchange = "bj"
+                    code = raw_code
                 else:
                     exchange = "sz"
+                    code = raw_code
 
-                records.append({
-                    "code": code,
-                    "name": row.get("名称", ""),
-                    "exchange": exchange,
-                    "market_code": "stock_cn",
-                })
+                if code and code.isdigit():
+                    records.append({
+                        "code": code.zfill(6),
+                        "name": str(row.get("名称", "")),
+                        "exchange": exchange,
+                        "market_code": "stock_cn",
+                    })
 
             logger.info(f"获取A股标的列表成功，共 {len(records)} 条")
             return records
 
         except Exception as e:
-            logger.error(f"获取A股标的列表失败: {str(e)}")
-            raise
+            logger.warning(f"获取A股标的列表失败，使用默认列表: {e}")
+            return self._get_default_stock_cn_symbols()
 
     async def _fetch_stock_us_symbols(self) -> List[Dict]:
-        """获取美股标的列表."""
+        """获取美股标的列表（60s超时回退到默认列表）."""
         try:
             import akshare as ak
-            df = await asyncio.to_thread(ak.get_us_stock_name)
+            df = await asyncio.wait_for(asyncio.to_thread(ak.get_us_stock_name), timeout=60)
             records = []
             for _, row in df.iterrows():
                 records.append({
@@ -1412,8 +1755,8 @@ class AKShareCollector:
                 })
             logger.info(f"获取美股标的列表成功，共 {len(records)} 条")
             return records
-        except Exception as e:
-            logger.warning(f"获取美股标的列表失败，使用默认列表: {e}")
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.warning(f"获取美股标的列表失败/超时，使用默认列表: {e}")
             return self._get_default_us_symbols()
 
     async def _fetch_stock_hk_symbols(self) -> List[Dict]:
@@ -1424,8 +1767,8 @@ class AKShareCollector:
             records = []
             for _, row in df.iterrows():
                 records.append({
-                    "code": str(row.get("code", "")),
-                    "name": str(row.get("name", "")),
+                    "code": str(row.get("代码", "")),
+                    "name": str(row.get("中文名称", "")),
                     "exchange": "hkex",
                     "market_code": "stock_hk",
                 })
@@ -1435,90 +1778,189 @@ class AKShareCollector:
             logger.warning(f"获取港股标的列表失败，使用默认列表: {e}")
             return self._get_default_hk_symbols()
 
+    async def collect_foreign_futures_daily(
+        self,
+        symbol_name: str,
+        symbol_code: str,
+        start_date: date,
+        end_date: date,
+    ) -> List[Dict]:
+        """
+        采集国际期货日线数据 (futures_foreign_hist, 新浪源).
+
+        覆盖COMEX/CME/NYMEX/LME/ICE/CBOT等30个品种.
+        """
+        import akshare as ak
+        import pandas as pd
+        from datetime import date as dt_date
+
+        # 提取品种代码（如 XAU9999 → XAU, CL9999 → CL）
+        import re
+        variety_match = re.match(r'^([A-Za-z]+)', symbol_code)
+        api_symbol = variety_match.group(1) if variety_match else symbol_code
+
+        logger.info(f"开始采集国际期货: {symbol_name} ({symbol_code}→{api_symbol}), {start_date} ~ {end_date}")
+        df = await asyncio.wait_for(
+            asyncio.to_thread(ak.futures_foreign_hist, symbol=api_symbol), timeout=30
+        )
+        if df is None or df.empty:
+            return []
+
+        df["date"] = pd.to_datetime(df["date"])
+        df = df[(df["date"] >= pd.to_datetime(start_date)) & (df["date"] <= pd.to_datetime(end_date))]
+        df = df.sort_values("date")
+
+        records = []
+        for _, row in df.iterrows():
+            date_val = row["date"]
+            if hasattr(date_val, "date"):
+                date_val = date_val.date()
+            else:
+                date_val = dt_date.fromisoformat(str(date_val)[:10])
+            records.append({
+                "date": date_val,
+                "open": self._safe_float(row.get("open")),
+                "high": self._safe_float(row.get("high")),
+                "low": self._safe_float(row.get("low")),
+                "close": self._safe_float(row.get("close")),
+                "volume": int(self._safe_float(row.get("volume", 0)) or 0),
+            })
+        logger.info(f"futures_foreign_hist 成功采集 {len(records)} 条 {symbol_name}")
+        return records
+
+    async def collect_crypto_daily(
+        self,
+        symbol_name: str,
+        symbol_code: str,
+        start_date: date,
+        end_date: date,
+    ) -> List[Dict]:
+        """
+        采集数字货币日线数据 (CCXT, Kraken优先).
+
+        免费无需API Key，日线OHLCV数据.
+        """
+        import ccxt
+        from datetime import date as dt_date
+
+        logger.info(f"开始采集数字货币: {symbol_name} ({symbol_code}), {start_date} ~ {end_date}")
+
+        # Kraken优先（无地域限制），Binance备选
+        ohlcv = []
+        for ex_id in ["kraken", "binance", "coinbase"]:
+            try:
+                exchange = getattr(ccxt, ex_id)()
+                since_ts = int(__import__('calendar').timegm(start_date.timetuple()) * 1000)
+                ohlcv = await asyncio.wait_for(
+                    asyncio.to_thread(exchange.fetch_ohlcv, symbol_code, "1d", since_ts, 1000),
+                    timeout=30
+                )
+                if ohlcv:
+                    logger.info(f"CCXT {ex_id} 成功获取 {len(ohlcv)} 条 {symbol_code}")
+                    break
+            except Exception as e:
+                logger.warning(f"CCXT {ex_id} 失败: {str(e)[:80]}")
+                continue
+
+        if not ohlcv:
+            return []
+
+        records = []
+        for candle in ohlcv:
+            ts, o, h, l, c, v = candle[:6]
+            record_date = dt_date.fromtimestamp(ts / 1000)
+            if record_date < start_date or record_date > end_date:
+                continue
+            records.append({
+                "date": record_date,
+                "open": self._safe_float(o),
+                "high": self._safe_float(h),
+                "low": self._safe_float(l),
+                "close": self._safe_float(c),
+                "volume": int(v or 0),
+            })
+        logger.info(f"CCXT 成功采集 {len(records)} 条 {symbol_name}")
+        return records
+
+    async def _fetch_crypto_symbols(self) -> List[Dict]:
+        """获取主流数字货币交易对列表."""
+        symbols = [
+            ("BTC/USDT", "比特币"), ("ETH/USDT", "以太坊"), ("SOL/USDT", "Solana"),
+            ("XRP/USDT", "瑞波币"), ("DOGE/USDT", "狗狗币"), ("ADA/USDT", "艾达币"),
+            ("AVAX/USDT", "Avalanche"), ("DOT/USDT", "波卡"), ("LINK/USDT", "Chainlink"),
+            ("MATIC/USDT", "Polygon"), ("UNI/USDT", "Uniswap"), ("ATOM/USDT", "Cosmos"),
+            ("LTC/USDT", "莱特币"), ("ETC/USDT", "以太经典"), ("BCH/USDT", "比特现金"),
+            ("FIL/USDT", "Filecoin"), ("APT/USDT", "Aptos"), ("ARB/USDT", "Arbitrum"),
+            ("OP/USDT", "Optimism"), ("NEAR/USDT", "NEAR Protocol"),
+        ]
+        records = []
+        for code, name in symbols:
+            records.append({"code": code, "name": name, "market_code": "crypto"})
+        logger.info(f"获取数字货币标的列表成功，共 {len(records)} 条")
+        return records
+
+    async def _fetch_foreign_futures_symbols(self) -> List[Dict]:
+        """获取国际期货标的列表（新浪外盘 futures_foreign_commodity_subscribe_exchange_symbol）."""
+        import akshare as ak
+
+        syms = ak.futures_foreign_commodity_subscribe_exchange_symbol()
+        detail_df = ak.futures_hq_subscribe_exchange_symbol()
+        # 建立 code→name 映射 (列名: symbol=中文名, code=英文代码)
+        name_map = {}
+        for _, row in detail_df.iterrows():
+            name_map[str(row.get("code", ""))] = str(row.get("symbol", ""))
+
+        records = []
+        for sym in syms:
+            name = name_map.get(sym, sym)
+            records.append({
+                "code": sym,
+                "name": name,
+                "exchange": "global",
+                "market_code": "futures_intl",
+            })
+        logger.info(f"获取国际期货标的列表成功，共 {len(records)} 条")
+        return records
+
     async def _fetch_futures_symbols(self) -> List[Dict]:
-        """获取国内期货标的列表."""
-        try:
-            import akshare as ak
-            import pandas as pd
+        """获取国内期货主力连续合约标的列表（futures_display_main_sina，覆盖6大交易所）."""
+        import akshare as ak
 
-            # 采集各交易所的期货合约信息
-            all_contracts = []
-
-            # 中金所 (CFFEX)
-            try:
-                df_cffex = await asyncio.to_thread(ak.futures_contract_info_cffex)
-                for _, row in df_cffex.iterrows():
-                    all_contracts.append({
-                        "code": str(row.get("合约代码", "")),
-                        "name": str(row.get("品种", "")),
-                        "exchange": "cffex",
-                        "variety": str(row.get("品种", "")),
-                        "market_code": "futures_cn",
-                    })
-            except Exception as e:
-                logger.warning(f"获取中金所合约信息失败: {e}")
-
-            # 大商所 (DCE)
-            try:
-                df_dce = await asyncio.to_thread(ak.futures_contract_info_dce)
-                for _, row in df_dce.iterrows():
-                    all_contracts.append({
-                        "code": str(row.get("合约代码", "")),
-                        "name": str(row.get("品种", "")),
-                        "exchange": "dce",
-                        "variety": str(row.get("品种", "")),
-                        "market_code": "futures_cn",
-                    })
-            except Exception as e:
-                logger.warning(f"获取大商所合约信息失败: {e}")
-
-            # 郑商所 (CZCE)
-            try:
-                df_czce = await asyncio.to_thread(ak.futures_contract_info_czce)
-                for _, row in df_czce.iterrows():
-                    all_contracts.append({
-                        "code": str(row.get("合约代码", "")),
-                        "name": str(row.get("品种", "")),
-                        "exchange": "czce",
-                        "variety": str(row.get("品种", "")),
-                        "market_code": "futures_cn",
-                    })
-            except Exception as e:
-                logger.warning(f"获取郑商所合约信息失败: {e}")
-
-            # 上期所 (SHFE)
-            try:
-                df_shfe = await asyncio.to_thread(ak.futures_contract_info_shfe)
-                for _, row in df_shfe.iterrows():
-                    all_contracts.append({
-                        "code": str(row.get("合约代码", "")),
-                        "name": str(row.get("品种", "")),
-                        "exchange": "shfe",
-                        "variety": str(row.get("品种", "")),
-                        "market_code": "futures_cn",
-                    })
-            except Exception as e:
-                logger.warning(f"获取上期所合约信息失败: {e}")
-
-            # 去重
-            seen = set()
-            unique_contracts = []
-            for c in all_contracts:
-                if c["code"] not in seen:
-                    seen.add(c["code"])
-                    unique_contracts.append(c)
-
-            logger.info(f"获取期货标的列表成功，共 {len(unique_contracts)} 条")
-            return unique_contracts
-
-        except Exception as e:
-            logger.error(f"获取期货标的列表失败: {str(e)}")
-            raise
+        df = await asyncio.to_thread(ak.futures_display_main_sina)
+        records = []
+        for _, row in df.iterrows():
+            symbol = str(row.get("symbol", ""))
+            name = str(row.get("name", ""))
+            exchange = str(row.get("exchange", "")).upper()
+            records.append({
+                "code": symbol,  # 如 AU0, IF0
+                "name": name,     # 如 黄金连续, 沪深300指数期货连续
+                "exchange": exchange,
+                "variety": symbol.rstrip("0"),  # 品种代码: AU, IF
+                "market_code": "futures_cn",
+            })
+        logger.info(f"获取期货主力合约列表成功，共 {len(records)} 条")
+        return records
 
     def _get_default_us_symbols(self) -> List[Dict]:
-        """美股默认标的列表（API不可用时的回退）."""
-        symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B",
-                    "JPM", "V", "WMT", "JNJ", "MA", "PG", "XOM", "BAC", "DIS", "NFLX"]
+        """美股默认标的列表（API超时或不可用时的回退，覆盖主要行业龙头）."""
+        symbols = [
+            # 科技
+            "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "NFLX", "ADBE", "CRM",
+            "ORCL", "CSCO", "INTC", "AMD", "QCOM", "TXN", "AVGO", "IBM", "INTU", "NOW",
+            # 金融
+            "JPM", "BAC", "WFC", "C", "GS", "MS", "V", "MA", "AXP", "BLK",
+            # 消费
+            "WMT", "PG", "KO", "PEP", "COST", "MCD", "NKE", "SBUX", "HD", "LOW",
+            # 医疗
+            "JNJ", "PFE", "MRK", "ABBV", "UNH", "ABT", "LLY", "TMO", "DHR", "BMY",
+            # 工业/能源
+            "XOM", "CVX", "BA", "CAT", "GE", "HON", "UPS", "RTX", "LMT", "DE",
+            # 通信/媒体
+            "DIS", "CMCSA", "T", "VZ", "CHTR",
+            # 其他
+            "BRK.B", "SPY", "QQQ",
+        ]
         return [{"code": s.lower(), "name": s, "exchange": "nasdaq", "market_code": "stock_us"} for s in symbols]
 
     def _get_default_hk_symbols(self) -> List[Dict]:
@@ -1539,6 +1981,20 @@ class AKShareCollector:
             ("sz127015", "希望转债"), ("sz128119", "龙净转债"),
         ]
         return [{"code": c, "name": n, "exchange": "sh" if c.startswith("sh") else "sz", "market_code": "bond_cn"} for c, n in symbols]
+
+    async def _fetch_bond_gb_zh_sina_symbols(self) -> List[Dict]:
+        """获取中国国债标的列表（新浪源 bond_gb_zh_sina）."""
+        cn_bond_symbols = [
+            {"code": "中国1年期国债", "name": "中国1年期国债", "market_code": "bond_cn"},
+            {"code": "中国2年期国债", "name": "中国2年期国债", "market_code": "bond_cn"},
+            {"code": "中国3年期国债", "name": "中国3年期国债", "market_code": "bond_cn"},
+            {"code": "中国5年期国债", "name": "中国5年期国债", "market_code": "bond_cn"},
+            {"code": "中国7年期国债", "name": "中国7年期国债", "market_code": "bond_cn"},
+            {"code": "中国10年期国债", "name": "中国10年期国债", "market_code": "bond_cn"},
+            {"code": "中国30年期国债", "name": "中国30年期国债", "market_code": "bond_cn"},
+        ]
+        logger.info(f"获取中国国债标的(sina)成功，共 {len(cn_bond_symbols)} 条")
+        return cn_bond_symbols
 
     async def _fetch_bond_cn_symbols(self) -> List[Dict]:
         """获取国内债券标的列表."""
@@ -1580,6 +2036,39 @@ class AKShareCollector:
         ]
         logger.info(f"获取美债标的列表成功，共 {len(us_bond_symbols)} 条")
         return us_bond_symbols
+
+
+    async def _fetch_bond_yield_symbols(self) -> List[Dict]:
+        """从 bond_zh_us_rate API 动态获取收益率列名作为标的."""
+        import akshare as ak
+        try:
+            df = await asyncio.wait_for(asyncio.to_thread(ak.bond_zh_us_rate), timeout=30)
+            if df is None or df.empty:
+                logger.warning("bond_zh_us_rate 返回空数据, 使用预定义标的列表")
+                return self._bond_yield_fallback_symbols()
+
+            # 过滤出收益率相关列名（排除日期、GDP等非收益率列）
+            exclude = {'日期', '中国GDP年增率', '美国GDP年增率'}
+            columns = [c for c in df.columns if c not in exclude]
+            symbols = [{"code": col, "name": col} for col in columns]
+            logger.info(f"从 bond_zh_us_rate 动态获取 {len(symbols)} 个标的")
+            return symbols
+        except Exception as e:
+            logger.warning(f"bond_zh_us_rate 标获取失败: {e}, 使用预定义列表")
+            return self._bond_yield_fallback_symbols()
+
+    def _bond_yield_fallback_symbols(self) -> List[Dict]:
+        """预定义债券收益率标的列表（API 不可用时的回退）."""
+        return [
+            {"code": "中国国债收益率2年", "name": "中国国债收益率2年"},
+            {"code": "中国国债收益率5年", "name": "中国国债收益率5年"},
+            {"code": "中国国债收益率10年", "name": "中国国债收益率10年"},
+            {"code": "中国国债收益率30年", "name": "中国国债收益率30年"},
+            {"code": "美国国债收益率2年", "name": "美国国债收益率2年"},
+            {"code": "美国国债收益率5年", "name": "美国国债收益率5年"},
+            {"code": "美国国债收益率10年", "name": "美国国债收益率10年"},
+            {"code": "美国国债收益率30年", "name": "美国国债收益率30年"},
+        ]
 
 
 # 全局采集器实例

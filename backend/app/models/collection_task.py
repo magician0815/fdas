@@ -9,7 +9,7 @@ Updated: 2026-04-10 - 新增market_id、symbol_id字段，添加字段注释
 """
 
 from sqlalchemy import Column, String, DateTime, Boolean, Date, ForeignKey, Integer, Text, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime, timezone
 import uuid
 
@@ -62,7 +62,8 @@ class CollectionTask(Base):
         nullable=False,
         comment="目标市场类型ID"
     )
-    symbol_id = Column(UUID(as_uuid=True), nullable=False, comment="目标标的ID")
+    symbol_id = Column(UUID(as_uuid=True), nullable=True, comment="目标标的ID（单标的，兼容旧数据）")
+    symbol_ids = Column(JSONB, nullable=True, comment="多标的ID列表（JSON数组）")
     start_date = Column(Date, comment="采集开始日期")
     end_date = Column(Date, comment="采集结束日期")
     cron_expr = Column(String(100), comment="Cron定时表达式")

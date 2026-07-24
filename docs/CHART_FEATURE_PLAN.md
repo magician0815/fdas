@@ -24,7 +24,7 @@ v2.5.0 起，金融 K 线图表由自研 ECharts 方案迁移至 [KLineChart](ht
 |--------|------|------|
 | 市场范围 | 先外汇完整功能 → 再股票 → 再期货 | 分阶段扩展 |
 | 开发方式 | 按最小功能点逐个开发 | |
-| 渲染引擎 | 继续使用ECharts | |
+| 渲染引擎 | 继续使用ECharts | 注：K线已迁移至KLineChart v10（v2.5.0），ECharts仅用于Dashboard |
 | 实时数据 | 暂不考虑，页面刷新获取最新数据 | |
 | 画线存储 | 画线内容不保存（刷新消失），工具设置保存在服务端 | 新建user_chart_settings表 |
 | 历史数据 | 根据后台存储时间长度确定范围 | |
@@ -106,7 +106,7 @@ CREATE INDEX idx_user_chart_settings_type ON user_chart_settings(setting_type);
 
 ---
 
-### F002 - K线形态切换（蜡烛图/折线图）
+### F002 - K线形态切换（蜡烛图/折线图）（已废弃 — 已从代码中移除）
 
 **功能描述**: 支持蜡烛图与收盘价折线图一键切换，切换时无闪屏
 
@@ -205,7 +205,7 @@ CREATE INDEX idx_user_chart_settings_type ON user_chart_settings(setting_type);
 **验收标准**:
 - [ ] MACD（12,26,9）默认参数正确计算
 - [ ] DIF线、DEA线、MACD柱正确渲染
-- [ ] MACD柱颜色：正值红色，负值绿色
+- [ ] MACD柱颜色：正值红色，负值绿色（现全局使用实心柱填充）
 - [ ] 参数可自定义
 
 **预估工作量**: 1天
@@ -330,7 +330,7 @@ CREATE INDEX idx_user_chart_settings_type ON user_chart_settings(setting_type);
 
 ---
 
-## 七、延后至后续阶段的功能（已完成P3-P8）
+## 七、后续阶段功能（P3-P10当前已全部完成）
 
 ### P3 股票市场专属（已完成）
 - ✅ 涨跌停标注（10%/20%/5%）

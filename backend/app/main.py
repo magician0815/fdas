@@ -125,8 +125,12 @@ app.include_router(bond_symbols.router, prefix="/api/v1", tags=["债券标的"])
 # bond_data.router 已包含 prefix="/bond/data"
 app.include_router(bond_data.router, prefix="/api/v1", tags=["债券行情数据"])
 
+# 诊断工具（后端自带，不受卷挂载影响）
+DIAG_DIR = Path("/app/static_diag")
+if DIAG_DIR.exists() and DIAG_DIR.is_dir():
+    app.mount("/diag", StaticFiles(directory=DIAG_DIR, html=True), name="diag")
+
 # 静态文件服务（前端）
-# 检查静态文件目录是否存在
 STATIC_DIR = Path("/app/static")
 if STATIC_DIR.exists() and STATIC_DIR.is_dir():
     # 挂载静态资源目录（CSS、JS、图片等）
@@ -139,17 +143,16 @@ if STATIC_DIR.exists() and STATIC_DIR.is_dir():
         """返回前端首页."""
         return FileResponse(STATIC_DIR / "index.html")
 
-    # 捕获所有未匹配的路径，返回index.html（支持SPA路由）
+    # 捕获所有未匹配的路径
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        """
-        SPA路由支持.
-        所有非API路由返回index.html，由前端路由处理.
-        """
-        # 如果请求的是API路径，跳过
+        """SPA路由支持. API路径404, 静态文件直接返回, 其余返回index.html."""
         if full_path.startswith("api/"):
-            # 让FastAPI返回404
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not Found")
-        # 返回index.html
+        # 如果路径对应实际文件, 直接返回
+        file_path = STATIC_DIR / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        # SPA fallback
         return FileResponse(STATIC_DIR / "index.html")

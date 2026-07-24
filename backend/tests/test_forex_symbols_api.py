@@ -45,6 +45,7 @@ def mock_forex_symbol():
     symbol.base_currency = "USD"
     symbol.quote_currency = "CNY"
     symbol.datasource_id = uuid4()
+    symbol.market_id = None
     symbol.is_active = True
     symbol.first_trade_date = date(2020, 1, 1)
     symbol.created_at = date(2020, 1, 1)
@@ -236,6 +237,7 @@ class TestForexSymbolsAPIAuthorized:
         created_symbol.base_currency = None
         created_symbol.quote_currency = None
         created_symbol.datasource_id = mock_datasource.id
+        created_symbol.market_id = None
         created_symbol.is_active = True
         created_symbol.first_trade_date = None
         created_symbol.created_at = date(2020, 1, 1)

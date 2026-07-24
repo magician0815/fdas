@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>诊断v7</title>
+<style>*{margin:0;padding:0}body{background:#1a1a2e;color:#e0e0e0;font-family:monospace;padding:20px}.pass{color:#4ade80}.fail{color:#ef4444}[id^=c]{width:100%;height:350px;background:#1a1a2e;border:2px solid #333;margin-bottom:8px}</style></head>
+<body><h2>诊断v7 — MACD参数+更多数据</h2><div id="out"></div>
+<div><b>A: 5条数据 MACD(2,5,3)短参数</b><div id="ca"></div></div>
+<div><b>B: 50条模拟数据 MACD(12,26,9)默认参数</b><div id="cb"></div></div>
+<div><b>C: CNHUSD 真实数据(15条) MACD(5,10,5)</b><div id="cc"></div></div>
+<script src="/diag/klinecharts-umd.js"></script>
+<script>
+var kc=window.klinecharts, out=document.getElementById('out')
+function log(m,ok){out.innerHTML+='<div class="'+(ok===false?'fail':'pass')+'">'+(ok===false?'✗':'✓')+' '+m+'</div>'}
+var bdata=[
+  {timestamp:1700000000000,open:100,high:105,low:99,close:103,volume:1e4},
+  {timestamp:1700000100000,open:103,high:108,low:101,close:107,volume:12e3},
+  {timestamp:1700000200000,open:107,high:110,low:105,close:106,volume:9e3},
+  {timestamp:1700000300000,open:106,high:109,low:104,close:108,volume:11e3},
+  {timestamp:1700000400000,open:108,high:112,low:107,close:110,volume:8e3},
+]
+function initChart(id,data,ma,macdParams){
+  var c=kc.init(id,{locale:'zh-CN'})
+  c.setSymbol({ticker:'T',pricePrecision:2,volumePrecision:0})
+  c.setPeriod({type:'day',span:1})
+  c.setDataLoader({getBars:function(p){p.callback(data,{forward:false})}})
+  c.createIndicator(ma)
+  if(macdParams) c.createIndicator(macdParams)
+  return c
+}
+
+// A: 5条数据, MACD(2,5,3) 短参数
+var ca=initChart('ca',bdata,{name:'MA',paneId:'candle_pane'},{name:'MACD',calcParams:[2,5,3]})
+log('A done, data='+(ca.getDataList()?.length||0))
+
+// B: 生成50条模拟数据
+var fakedata=[]; var price=100
+for(var i=0;i<50;i++){price+=Math.random()*6-3;fakedata.push({timestamp:1700000000000+i*864e5,open:price-1,high:price+3,low:price-2,close:price+Math.random()*2,volume:1e4})}
+var cb=initChart('cb',fakedata,{name:'MA',paneId:'candle_pane'},{name:'MACD',calcParams:[12,26,9]})
+log('B done, data='+(cb.getDataList()?.length||0))
+
+// C: CNHUSD 真实数据 MACD(5,10,5)
+var cc=kc.init('cc',{locale:'zh-CN'})
+cc.setSymbol({ticker:'CNHUSD',pricePrecision:4,volumePrecision:0})
+cc.setPeriod({type:'day',span:1})
+fetch('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'admin123'})})
+.then(r=>r.json()).then(function(l){
+  return fetch('/api/v1/fx/data?symbol_id=6aa4b49f-cb3b-41d6-88b4-1fd6db81029e&limit=50',{headers:{'X-Session-ID':l.data.session_id}})
+}).then(r=>r.json()).then(function(d){
+  var bars=d.data.map(function(i){return {timestamp:new Date(i.date).getTime(),open:+i.open,high:+i.high,low:+i.low,close:+i.close,volume:100}})
+  cc.setDataLoader({getBars:function(p){p.callback(bars,{forward:false})}})
+  cc.createIndicator({name:'MA',paneId:'candle_pane'})
+  cc.createIndicator({name:'MACD',calcParams:[5,10,5]})
+  log('C done, data='+(cc.getDataList()?.length||0))
+})
+</script></body></html>

@@ -19,7 +19,8 @@ class CollectionTaskBase(BaseModel):
     name: str = Field(..., description="任务名称", max_length=100)
     datasource_id: UUID = Field(..., description="数据源ID")
     market_id: UUID = Field(..., description="目标市场ID")
-    symbol_id: UUID = Field(..., description="目标标的ID")
+    symbol_id: Optional[UUID] = Field(None, description="目标标的ID（单标的选择）")
+    symbol_ids: Optional[List[UUID]] = Field(None, description="多标的ID列表")
     start_date: Optional[date] = Field(None, description="采集开始日期")
     end_date: Optional[date] = Field(None, description="采集结束日期")
     cron_expr: Optional[str] = Field(None, description="Cron定时表达式", max_length=100)
@@ -37,6 +38,7 @@ class CollectionTaskUpdate(BaseModel):
     datasource_id: Optional[UUID] = Field(None, description="数据源ID")
     market_id: Optional[UUID] = Field(None, description="目标市场ID")
     symbol_id: Optional[UUID] = Field(None, description="目标标的ID")
+    symbol_ids: Optional[List[UUID]] = Field(None, description="多标的ID列表")
     start_date: Optional[date] = Field(None, description="采集开始日期")
     end_date: Optional[date] = Field(None, description="采集结束日期")
     cron_expr: Optional[str] = Field(None, description="Cron定时表达式", max_length=100)
@@ -48,10 +50,12 @@ class CollectionTaskValidateRequest(BaseModel):
     name: Optional[str] = Field(None, description="任务名称", max_length=100)
     datasource_id: UUID = Field(..., description="数据源ID")
     market_id: UUID = Field(..., description="目标市场ID")
-    symbol_id: UUID = Field(..., description="目标标的ID")
+    symbol_id: Optional[UUID] = Field(None, description="目标标的ID（单标的选择）")
+    symbol_ids: Optional[List[UUID]] = Field(None, description="多标的ID列表")
     start_date: Optional[date] = Field(None, description="采集开始日期")
     end_date: Optional[date] = Field(None, description="采集结束日期")
     cron_expr: Optional[str] = Field(None, description="Cron定时表达式", max_length=100)
+    exclude_task_id: Optional[UUID] = Field(None, description="排除的任务ID（编辑时使用）")
 
 
 class ValidateResult(BaseModel):
@@ -70,7 +74,8 @@ class CollectionTaskResponse(BaseModel):
     name: str
     datasource_id: UUID
     market_id: UUID
-    symbol_id: UUID
+    symbol_id: Optional[UUID]
+    symbol_ids: Optional[List[UUID]] = None
     start_date: Optional[date]
     end_date: Optional[date]
     cron_expr: Optional[str]
@@ -96,6 +101,8 @@ class CollectionTaskLogResponse(BaseModel):
     message: Optional[str]
     duration_ms: Optional[int]
     created_at: datetime
+    symbol_results: Optional[list] = Field(default=None, description="每个标的的采集结果明细")
+    failed_symbols: Optional[list] = Field(default=None, description="采集失败的标的ID列表")
 
 
 class TaskExecuteRequest(BaseModel):
@@ -112,3 +119,5 @@ class TaskExecuteResponse(BaseModel):
     records_count: int
     message: str
     duration_ms: Optional[int]
+    symbol_results: Optional[list] = Field(default=None, description="每个标的的采集结果明细")
+    failed_symbols: Optional[list] = Field(default=None, description="采集失败的标的ID列表")

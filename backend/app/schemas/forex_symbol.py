@@ -49,6 +49,7 @@ class ForexSymbolResponse(BaseModel):
     name: str
     description: Optional[str]
     datasource_id: Optional[UUID]
+    market_id: Optional[UUID]
     base_currency: Optional[str]
     quote_currency: Optional[str]
     is_active: bool
@@ -64,6 +65,7 @@ class ForexSymbolListItem(BaseModel):
     id: UUID
     code: str
     name: str
+    market_id: Optional[UUID]
     base_currency: Optional[str]
     quote_currency: Optional[str]
     is_active: bool

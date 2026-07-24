@@ -9,7 +9,7 @@ Updated: 2026-04-10 - 添加字段注释
 """
 
 from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime, timezone
 import uuid
 
@@ -51,4 +51,6 @@ class CollectionTaskLog(Base):
     records_count = Column(Integer, default=0, comment="采集记录数")
     message = Column(Text, comment="执行消息或错误信息")
     duration_ms = Column(Integer, comment="执行耗时（毫秒）")
+    symbol_results = Column(JSONB, nullable=True, comment="每个标的的采集明细")
+    failed_symbols = Column(JSONB, nullable=True, comment="采集失败标的ID列表")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), comment="创建时间")

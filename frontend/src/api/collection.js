@@ -80,7 +80,7 @@ export function disableTask(taskId) {
  * @returns {Promise} API响应
  */
 export function executeTask(taskId, force = false) {
-  return request.post(`/api/v1/collection-tasks/${taskId}/execute`, { force })
+  return request.post(`/api/v1/collection-tasks/${taskId}/execute`, { force }, { timeout: 600000 })
 }
 
 /**

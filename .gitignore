@@ -34,6 +34,7 @@ env/
 *.swp
 *.swo
 *~
+.claude/settings.local.json
 
 # 日志
 logs/
@@ -78,4 +79,10 @@ docker/*.log
 
 # 部署与备份（仅用于本地，不提交）
 backups/
-deployment-packages/
+# 部署包中的构建产物不入库（在部署时重新构建）
+deployment-packages/frontend/assets/
+deployment-packages/frontend/index.html
+deployment-packages/**/dist/
+deployment-packages/single-container/backend/
+deployment-packages/single-container/frontend/
+deployment-packages/multi-container/frontend/

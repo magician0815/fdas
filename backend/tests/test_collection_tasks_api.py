@@ -1184,6 +1184,9 @@ class TestExecuteCollectionTask:
         mock_task.datasource_id = uuid4()
         mock_task.start_date = date(2026, 1, 1)
         mock_task.end_date = date(2026, 1, 31)
+        mock_task.last_status = "success"
+        mock_task.last_message = "成功采集100条数据"
+        mock_task.last_records_count = 100
 
         created_log = MagicMock(spec=CollectionTaskLog)
         created_log.id = uuid4()
@@ -1191,34 +1194,33 @@ class TestExecuteCollectionTask:
         created_log.status = "success"
         created_log.records_count = 100
         created_log.message = "成功采集100条数据"
+        created_log.duration_ms = 1500
+        created_log.symbol_results = None
+        created_log.failed_symbols = None
 
         async def mock_refresh(obj):
-            if hasattr(obj, 'status'):
-                obj.status = "success"
-                obj.records_count = 100
             return obj
 
         mock_db.refresh = mock_refresh
 
         mock_result = MagicMock()
-        # 查询task，查询market
-        mock_result.scalar_one_or_none.side_effect = [mock_task, mock_market]
+        # 查询task，查询market，查询latest_log
+        mock_result.scalar_one_or_none.side_effect = [mock_task, mock_market, created_log]
         mock_db.execute.return_value = mock_result
 
         test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
-        with patch('app.services.forex_daily_service.forex_daily_service.get_latest_date', return_value=None):
-            with patch('app.services.forex_daily_service.forex_daily_service.collect_and_save', return_value=100):
-                test_app.include_router(router, prefix="/api/v1/collection-tasks")
+        with patch('app.api.v1.collection_tasks.collection_service.execute_task', new_callable=AsyncMock):
+            test_app.include_router(router, prefix="/api/v1/collection-tasks")
 
-                async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
-                    response = await client.post(f"/api/v1/collection-tasks/{mock_task.id}/execute")
+            async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+                response = await client.post(f"/api/v1/collection-tasks/{mock_task.id}/execute")
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert "任务执行成功" in data["message"]
+        assert "成功采集100条数据" in data["message"]
 
     @pytest.mark.asyncio
     async def test_execute_task_not_found(self, mock_admin_user):
@@ -1267,7 +1269,7 @@ class TestExecuteCollectionTask:
 
     @pytest.mark.asyncio
     async def test_execute_task_invalid_market_type(self, mock_admin_user, mock_task):
-        """测试执行不支持的市场类型."""
+        """测试执行不支持的市场类型（execute_task内部处理）."""
         test_app = FastAPI()
         mock_db = AsyncMock()
         mock_db.add = MagicMock()
@@ -1277,45 +1279,71 @@ class TestExecuteCollectionTask:
         other_market.code = "stock"
         other_market.name = "股票市场"
 
+        mock_task.last_status = "failed"
+        mock_task.last_message = "暂不支持手动执行该市场类型的采集任务"
+        mock_task.last_records_count = 0
+
+        created_log = MagicMock(spec=CollectionTaskLog)
+        created_log.id = uuid4()
+        created_log.task_id = mock_task.id
+        created_log.status = "failed"
+        created_log.message = "暂不支持手动执行该市场类型的采集任务"
+        created_log.duration_ms = 0
+        created_log.symbol_results = None
+        created_log.failed_symbols = None
+
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.side_effect = [mock_task, other_market]
+        mock_result.scalar_one_or_none.side_effect = [mock_task, other_market, created_log]
         mock_db.execute.return_value = mock_result
 
         test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
-        test_app.include_router(router, prefix="/api/v1/collection-tasks")
+        with patch('app.api.v1.collection_tasks.collection_service.execute_task', new_callable=AsyncMock):
+            test_app.include_router(router, prefix="/api/v1/collection-tasks")
 
-        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
-            response = await client.post(f"/api/v1/collection-tasks/{mock_task.id}/execute")
+            async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+                response = await client.post(f"/api/v1/collection-tasks/{mock_task.id}/execute")
 
-        assert response.status_code == 400
+        assert response.status_code == 200
         data = response.json()
-        assert "暂不支持手动执行" in data["detail"]
+        assert data["success"] is False
+        assert "暂不支持手动执行" in data["message"]
 
     @pytest.mark.asyncio
     async def test_execute_task_with_exception(self, mock_admin_user, mock_task, mock_market):
-        """测试执行任务异常."""
+        """测试执行任务异常（execute_task内部处理异常并更新任务状态）."""
         test_app = FastAPI()
         mock_db = AsyncMock()
         mock_db.add = MagicMock()
 
         mock_task.symbol_id = uuid4()
         mock_task.datasource_id = uuid4()
+        mock_task.last_status = "failed"
+        mock_task.last_message = "采集失败: 采集失败"
+        mock_task.last_records_count = 0
+
+        created_log = MagicMock(spec=CollectionTaskLog)
+        created_log.id = uuid4()
+        created_log.task_id = mock_task.id
+        created_log.status = "failed"
+        created_log.message = "采集失败: 采集失败"
+        created_log.duration_ms = 0
+        created_log.symbol_results = None
+        created_log.failed_symbols = None
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.side_effect = [mock_task, mock_market]
+        mock_result.scalar_one_or_none.side_effect = [mock_task, mock_market, created_log]
         mock_db.execute.return_value = mock_result
 
         test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
-        with patch('app.services.forex_daily_service.forex_daily_service.get_latest_date', return_value=None):
-            with patch('app.services.forex_daily_service.forex_daily_service.collect_and_save', side_effect=Exception("采集失败")):
-                test_app.include_router(router, prefix="/api/v1/collection-tasks")
+        with patch('app.api.v1.collection_tasks.collection_service.execute_task', new_callable=AsyncMock):
+            test_app.include_router(router, prefix="/api/v1/collection-tasks")
 
-                async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
-                    response = await client.post(f"/api/v1/collection-tasks/{mock_task.id}/execute")
+            async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+                response = await client.post(f"/api/v1/collection-tasks/{mock_task.id}/execute")
 
         assert response.status_code == 200
         data = response.json()
@@ -1331,15 +1359,28 @@ class TestExecuteCollectionTask:
 
         mock_task.symbol_id = uuid4()
         mock_task.datasource_id = uuid4()
+        mock_task.last_status = "success"
+        mock_task.last_message = "强制采集完成"
+        mock_task.last_records_count = 100
+
+        created_log = MagicMock(spec=CollectionTaskLog)
+        created_log.id = uuid4()
+        created_log.task_id = mock_task.id
+        created_log.status = "success"
+        created_log.records_count = 100
+        created_log.message = "强制采集完成"
+        created_log.duration_ms = 2000
+        created_log.symbol_results = None
+        created_log.failed_symbols = None
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.side_effect = [mock_task, mock_market]
+        mock_result.scalar_one_or_none.side_effect = [mock_task, mock_market, created_log]
         mock_db.execute.return_value = mock_result
 
         test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
-        with patch('app.services.forex_daily_service.forex_daily_service.collect_and_save', return_value=100):
+        with patch('app.api.v1.collection_tasks.collection_service.execute_task', new_callable=AsyncMock):
             test_app.include_router(router, prefix="/api/v1/collection-tasks")
 
             async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
@@ -1352,7 +1393,7 @@ class TestExecuteCollectionTask:
 
     @pytest.mark.asyncio
     async def test_execute_task_continue_from_latest(self, mock_admin_user, mock_task, mock_market):
-        """测试从最新日期继续采集."""
+        """测试从最新日期继续采集（execute_task内部处理续采逻辑）."""
         test_app = FastAPI()
         mock_db = AsyncMock()
         mock_db.add = MagicMock()
@@ -1361,22 +1402,32 @@ class TestExecuteCollectionTask:
         mock_task.datasource_id = uuid4()
         mock_task.start_date = date(2026, 1, 1)
         mock_task.end_date = date(2026, 1, 31)
+        mock_task.last_status = "success"
+        mock_task.last_message = "续采完成: 50条"
+        mock_task.last_records_count = 50
 
-        latest_date = date(2026, 1, 15)
+        created_log = MagicMock(spec=CollectionTaskLog)
+        created_log.id = uuid4()
+        created_log.task_id = mock_task.id
+        created_log.status = "success"
+        created_log.records_count = 50
+        created_log.message = "续采完成: 50条"
+        created_log.duration_ms = 1500
+        created_log.symbol_results = None
+        created_log.failed_symbols = None
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.side_effect = [mock_task, mock_market]
+        mock_result.scalar_one_or_none.side_effect = [mock_task, mock_market, created_log]
         mock_db.execute.return_value = mock_result
 
         test_app.dependency_overrides[require_admin] = override_require_admin(mock_admin_user)
         test_app.dependency_overrides[get_db] = override_get_db(mock_db)
 
-        with patch('app.services.forex_daily_service.forex_daily_service.get_latest_date', return_value=latest_date):
-            with patch('app.services.forex_daily_service.forex_daily_service.collect_and_save', return_value=100):
-                test_app.include_router(router, prefix="/api/v1/collection-tasks")
+        with patch('app.api.v1.collection_tasks.collection_service.execute_task', new_callable=AsyncMock):
+            test_app.include_router(router, prefix="/api/v1/collection-tasks")
 
-                async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
-                    response = await client.post(f"/api/v1/collection-tasks/{mock_task.id}/execute")
+            async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as client:
+                response = await client.post(f"/api/v1/collection-tasks/{mock_task.id}/execute")
 
         assert response.status_code == 200
 

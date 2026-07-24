@@ -46,7 +46,7 @@ export function updateSupportedSymbols(datasourceId) {
  * @returns {Promise} API响应
  */
 export function syncSymbolsToDatabase(datasourceId) {
-  return request.post(`/api/v1/datasources/${datasourceId}/sync-to-database`)
+  return request.post(`/api/v1/datasources/${datasourceId}/sync-to-database`, null, { timeout: 120000 })
 }
 
 /**

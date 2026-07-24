@@ -75,7 +75,26 @@ class StockDailyService:
         if not start_date:
             start_date = end_date - timedelta(days=30)
 
-        logger.info(f"开始采集股票数据: {symbol.name} ({symbol.code}), {start_date} ~ {end_date}")
+        # 构建代码：仅A股需要 sh/sz/bj 前缀，港股/美股直接用原始代码
+        code = symbol.code
+        from app.models.market import Market as MarketModel
+        market_result = await db.execute(select(MarketModel).where(MarketModel.id == market_id))
+        market = market_result.scalar_one_or_none()
+        is_cn = market and market.code == "stock_cn"
+
+        if is_cn:
+            if code.startswith("6"):
+                full_code = f"sh{code}"
+            elif code.startswith(("0", "3")):
+                full_code = f"sz{code}"
+            elif code.startswith(("4", "8", "9")):
+                full_code = f"bj{code}"
+            else:
+                full_code = code
+        else:
+            full_code = code
+
+        logger.info(f"开始采集股票数据: {symbol.name} ({code}), {start_date} ~ {end_date}")
 
         # 根据配置创建采集器
         if collector_config:
@@ -87,7 +106,7 @@ class StockDailyService:
         try:
             records = await collector.collect_daily(
                 config=collector_config or {},
-                symbol=symbol.code,
+                symbol=full_code,
                 start_date=start_date,
                 end_date=end_date,
             )
@@ -108,6 +127,11 @@ class StockDailyService:
         cleaned_records = []
         for record in records:
             cleaned_record = {k: v for k, v in record.items() if k in allowed_fields}
+            # Convert date string to date object for SQL
+            date_val = cleaned_record.get("date")
+            if isinstance(date_val, str):
+                from datetime import date as date_cls
+                cleaned_record["date"] = date_cls.fromisoformat(date_val)
             cleaned_record["symbol_id"] = symbol_id
             cleaned_record["market_id"] = market_id
             if datasource_id:
@@ -234,7 +258,7 @@ class StockDailyService:
         for record in data:
             stmt = insert(StockDaily).values(**record)
             stmt = stmt.on_conflict_do_update(
-                constraint="stock_daily_symbol_market_date_datasource_key",
+                constraint="stock_daily_symbol_id_market_id_date_datasource_id_key",
                 set_={
                     "open": stmt.excluded.open,
                     "high": stmt.excluded.high,

@@ -5,6 +5,7 @@
  *
  * Author: FDAS Team
  * Created: 2026-04-16
+ * Updated: 2026-07-24 - 迁移至 /market-overview 统一行情页面
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -15,7 +16,7 @@ import { useAuthStore } from '@/stores/auth'
 // Mock Vue组件动态导入
 vi.mock('@/views/Login.vue', () => ({ default: { name: 'Login' } }))
 vi.mock('@/views/Dashboard.vue', () => ({ default: { name: 'Dashboard' } }))
-vi.mock('@/views/FXData.vue', () => ({ default: { name: 'FXData' } }))
+vi.mock('@/views/MarketOverview.vue', () => ({ default: { name: 'MarketOverview' } }))
 vi.mock('@/views/DataSource.vue', () => ({ default: { name: 'DataSource' } }))
 vi.mock('@/views/Collection.vue', () => ({ default: { name: 'Collection' } }))
 vi.mock('@/views/Users.vue', () => ({ default: { name: 'Users' } }))
@@ -28,8 +29,6 @@ describe('Router', () => {
 
   // 获取路由守卫函数
   const getNavigationGuards = () => {
-    // router.beforeEach注册的守卫存储在内部
-    // 我们需要直接测试router/index.js中的守卫逻辑
     const authStore = useAuthStore()
     return (to, from, next) => {
       // 检查是否需要登录
@@ -56,17 +55,17 @@ describe('Router', () => {
       expect(loginRoute?.meta?.requiresAuth).toBe(false)
     })
 
-    it('应该包含根路由重定向', () => {
+    it('应该包含根路由重定向到行情数据', () => {
       const rootRoute = router.options.routes.find(r => r.path === '/')
       expect(rootRoute).toBeDefined()
-      expect(rootRoute?.redirect).toBe('/fx-data')
+      expect(rootRoute?.redirect).toBe('/market-overview')
     })
 
-    it('应该包含fx-data路由', () => {
-      const fxDataRoute = router.options.routes.find(r => r.path === '/fx-data')
-      expect(fxDataRoute).toBeDefined()
-      expect(fxDataRoute?.name).toBe('FXData')
-      expect(fxDataRoute?.meta?.requiresAuth).toBe(true)
+    it('应该包含行情数据路由', () => {
+      const marketRoute = router.options.routes.find(r => r.path === '/market-overview')
+      expect(marketRoute).toBeDefined()
+      expect(marketRoute?.name).toBe('MarketOverview')
+      expect(marketRoute?.meta?.requiresAuth).toBe(true)
     })
 
     it('应该包含dashboard路由', () => {
@@ -94,11 +93,10 @@ describe('Router', () => {
   describe('路由守卫 - 登录检查', () => {
     it('未登录访问需要认证的路由应重定向到登录页', async () => {
       const authStore = useAuthStore()
-      // 模拟未登录状态
       authStore.user = null
 
       const guard = getNavigationGuards()
-      const to = { path: '/fx-data', meta: { requiresAuth: true } }
+      const to = { path: '/market-overview', meta: { requiresAuth: true } }
       const from = { path: '/login' }
       const next = vi.fn()
 
@@ -109,11 +107,10 @@ describe('Router', () => {
 
     it('已登录访问需要认证的路由应允许通过', async () => {
       const authStore = useAuthStore()
-      // 模拟已登录状态
       authStore.user = { id: '1', username: 'test', role: 'user' }
 
       const guard = getNavigationGuards()
-      const to = { path: '/fx-data', meta: { requiresAuth: true } }
+      const to = { path: '/market-overview', meta: { requiresAuth: true } }
       const from = { path: '/login' }
       const next = vi.fn()
 
@@ -140,12 +137,11 @@ describe('Router', () => {
   describe('路由守卫 - Admin权限检查', () => {
     it('非admin用户访问admin路由应重定向到首页', async () => {
       const authStore = useAuthStore()
-      // 模拟普通用户登录
       authStore.user = { id: '1', username: 'user', role: 'user' }
 
       const guard = getNavigationGuards()
       const to = { path: '/users', meta: { requiresAuth: true, requiresAdmin: true } }
-      const from = { path: '/fx-data' }
+      const from = { path: '/market-overview' }
       const next = vi.fn()
 
       guard(to, from, next)
@@ -155,12 +151,11 @@ describe('Router', () => {
 
     it('admin用户访问admin路由应允许通过', async () => {
       const authStore = useAuthStore()
-      // 模拟admin用户登录
       authStore.user = { id: '1', username: 'admin', role: 'admin' }
 
       const guard = getNavigationGuards()
       const to = { path: '/users', meta: { requiresAuth: true, requiresAdmin: true } }
-      const from = { path: '/fx-data' }
+      const from = { path: '/market-overview' }
       const next = vi.fn()
 
       guard(to, from, next)
@@ -179,7 +174,6 @@ describe('Router', () => {
 
       guard(to, from, next)
 
-      // 首先检查登录，所以应重定向到登录页
       expect(next).toHaveBeenCalledWith('/login')
     })
   })

@@ -103,7 +103,7 @@ const stockCN: MarketProfile = {
     gapDetection: true,
   },
   limitUpDownSubTypes: [
-    { id: 'stock_a', name: 'A股主板', thresholdPercent: 10, matcher: (c, n) => /^(60[0-9]{4}|00[0-9]{5})$/.test(c) && !/[sS][tT]/.test(n || '') },
+    { id: 'stock_a', name: 'A股主板', thresholdPercent: 10, matcher: (c, n) => /^(60[0-9]{4}|00[0-9]{4})$/.test(c) && !/[sS][tT]/.test(n || '') },
     { id: 'stock_cyb', name: '创业板', thresholdPercent: 20, matcher: (c) => /^30[0-9]{4}$/.test(c) },
     { id: 'stock_kcb', name: '科创板', thresholdPercent: 20, matcher: (c) => /^688[0-9]{3}$/.test(c) },
     { id: 'stock_st', name: 'ST股', thresholdPercent: 5, matcher: (_c, n) => /[sS][tT]/.test(n || '') },
@@ -129,7 +129,7 @@ const stockCN: MarketProfile = {
   defaultBars: 60,
   identification: {
     priority: 0,
-    matcher: (c) => /^(60[0-9]{4}|00[0-9]{5}|30[0-9]{4}|688[0-9]{3}|[84][0-9]{5})$/.test(c),
+    matcher: (c) => /^(60[0-9]{4}|00[0-9]{4}|30[0-9]{4}|688[0-9]{3}|[84][0-9]{5})$/.test(c),
   },
 }
 
@@ -141,7 +141,7 @@ const stockHK: MarketProfile = {
   volumeUnit: 'shares',
   features: {
     limitUpDown: false,
-    adjustment: false,
+    adjustment: true,
     openInterest: false,
     yieldDisplay: false,
     yieldSpread: false,
@@ -174,7 +174,7 @@ const stockHK: MarketProfile = {
 const stockUS: MarketProfile = {
   id: 'stock_us',
   displayName: '美股',
-  colorDirection: 'green-up-red-down',
+  colorDirection: 'red-up-green-down',
   pricePrecision: 2,
   volumeUnit: 'shares',
   features: {
@@ -228,9 +228,10 @@ const forex: MarketProfile = {
     gapDetection: false,
   },
   subChartSlots: [
+    { id: 'volume', indicatorName: 'VOL', defaultVisible: true },
     { id: 'macd', indicatorName: 'MACD', defaultVisible: true },
   ],
-  defaultIndicators: ['MA', 'MACD'],
+  defaultIndicators: ['MA', 'VOL', 'MACD'],
   indicatorStrategy: 'server',
   periodOptions: [
     { value: 'daily', label: '日K' },
@@ -273,11 +274,10 @@ const futuresCN: MarketProfile = {
     { id: 'futures_default', name: '期货默认', thresholdPercent: 10, matcher: () => true },
   ],
   subChartSlots: [
-    { id: 'volume', indicatorName: 'VOL', defaultVisible: true },
     { id: 'open_interest', indicatorName: 'OI', defaultVisible: true },
     { id: 'macd', indicatorName: 'MACD', defaultVisible: true },
   ],
-  defaultIndicators: ['MA', 'VOL', 'OI', 'MACD'],
+  defaultIndicators: ['MA', 'OI', 'MACD'],
   indicatorStrategy: 'client',
   periodOptions: [
     { value: 'daily', label: '日K' },
@@ -337,7 +337,7 @@ const bondCN: MarketProfile = {
 const bondUS: MarketProfile = {
   id: 'bond_us',
   displayName: '美债',
-  colorDirection: 'green-up-red-down',
+  colorDirection: 'red-up-green-down',
   pricePrecision: 4,
   volumeUnit: 'none',
   features: {

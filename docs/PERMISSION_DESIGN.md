@@ -57,8 +57,8 @@
 | 功能模块 | admin | user | 实现位置 |
 |---------|-------|------|---------|
 | **数据分析** |
-| 查看K线/均线/MACD图 | ✅ | ✅ | FXData.vue |
-| 切换时间范围 | ✅ | ✅ | FXData.vue |
+| 查看K线/均线/MACD图 | ✅ | ✅ | MarketOverview.vue |
+| 切换时间范围 | ✅ | ✅ | MarketOverview.vue |
 | **数据管理** |
 | 查看数据源配置 | ✅ | ❌ | DataSource.vue |
 | 修改数据源配置 | ✅ | ❌ | DataSource.vue |
@@ -97,7 +97,7 @@
 
 | 菜单项 | 路由 | admin | user | 菜单父节点 |
 |--------|------|-------|------|-----------|
-| **数据分析** | /fx-data | ✅ | ✅ | 一级菜单 |
+| **数据分析** | /market-overview | ✅ | ✅ | 一级菜单 |
 | **数据管理** | - | ✅ | ❌ | 一级菜单 |
 | ├ 数据源管理 | /datasource | ✅ | ❌ | 二级菜单 |
 | └ 采集任务 | /collection | ✅ | ❌ | 二级菜单 |
@@ -710,9 +710,9 @@ export const routes = [
     },
   },
   {
-    path: '/fx-data',
-    name: 'FXData',
-    component: () => import('@/views/FXData.vue'),
+    path: '/market-overview',
+    name: 'MarketOverview',
+    component: () => import('@/views/MarketOverview.vue'),
     meta: {
       requiresAuth: true,  // 需要登录
       requiresAdmin: false,  // 不需要admin
@@ -768,7 +768,7 @@ export const routes = [
 <!-- frontend/src/components/Sidebar.vue -->
 <template>
   <el-menu :default-active="activeMenu" router>
-    <el-menu-item index="/fx-data" v-if="showMenuItem('fx-data')">
+    <el-menu-item index="/market-overview" v-if="showMenuItem('fx-data')">
       <el-icon><TrendCharts /></el-icon>
       <span>数据分析</span>
     </el-menu-item>
@@ -1209,7 +1209,7 @@ describe('Sidebar', () => {
     authStore.user = { username: 'admin', role: 'admin' }
 
     const wrapper = mount(Sidebar)
-    expect(wrapper.find('[index="/fx-data"]').exists()).toBe(true)
+    expect(wrapper.find('[index="/market-overview"]').exists()).toBe(true)
     expect(wrapper.find('[index="data-management"]').exists()).toBe(true)
     expect(wrapper.find('[index="system-management"]').exists()).toBe(true)
   })
@@ -1219,7 +1219,7 @@ describe('Sidebar', () => {
     authStore.user = { username: 'test', role: 'user' }
 
     const wrapper = mount(Sidebar)
-    expect(wrapper.find('[index="/fx-data"]').exists()).toBe(true)
+    expect(wrapper.find('[index="/market-overview"]').exists()).toBe(true)
     expect(wrapper.find('[index="data-management"]').exists()).toBe(false)
     expect(wrapper.find('[index="system-management"]').exists()).toBe(false)
   })

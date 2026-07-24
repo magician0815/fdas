@@ -133,33 +133,36 @@ class TestCollectForexHist:
 
     @pytest.mark.asyncio
     async def test_collect_forex_hist_empty_data(self, collector: AKShareCollector):
-        """测试采集数据为空（覆盖行161-163）."""
+        """测试采集数据为空（双源均返回空则抛异常）."""
         with patch.object(collector, '_call_forex_hist', return_value=pd.DataFrame()):
-            result = await collector.collect_forex_hist(
-                "美元人民币", "USDCNY",
-                date(2026, 4, 1), date(2026, 4, 30)
-            )
-            assert len(result) == 0
+            with patch.object(collector, '_call_forex_boc', return_value=pd.DataFrame()):
+                with pytest.raises(Exception, match="所有外汇数据源均无法采集"):
+                    await collector.collect_forex_hist(
+                        "美元人民币", "USDCNY",
+                        date(2026, 4, 1), date(2026, 4, 30)
+                    )
 
     @pytest.mark.asyncio
     async def test_collect_forex_hist_none_data(self, collector: AKShareCollector):
-        """测试采集数据为None（覆盖行161-163）."""
+        """测试采集数据为None（双源均返回None则抛异常）."""
         with patch.object(collector, '_call_forex_hist', return_value=None):
-            result = await collector.collect_forex_hist(
-                "美元人民币", "USDCNY",
-                date(2026, 4, 1), date(2026, 4, 30)
-            )
-            assert len(result) == 0
+            with patch.object(collector, '_call_forex_boc', return_value=None):
+                with pytest.raises(Exception, match="所有外汇数据源均无法采集"):
+                    await collector.collect_forex_hist(
+                        "美元人民币", "USDCNY",
+                        date(2026, 4, 1), date(2026, 4, 30)
+                    )
 
     @pytest.mark.asyncio
     async def test_collect_forex_hist_exception(self, collector: AKShareCollector):
-        """测试采集异常（覆盖行171-173）."""
+        """测试采集异常（双源均异常则抛异常）."""
         with patch.object(collector, '_call_forex_hist', side_effect=Exception("API错误")):
-            with pytest.raises(Exception):
-                await collector.collect_forex_hist(
-                    "美元人民币", "USDCNY",
-                    date(2026, 4, 1), date(2026, 4, 30)
-                )
+            with patch.object(collector, '_call_forex_boc', side_effect=Exception("BOC错误")):
+                with pytest.raises(Exception, match="所有外汇数据源均无法采集"):
+                    await collector.collect_forex_hist(
+                        "美元人民币", "USDCNY",
+                        date(2026, 4, 1), date(2026, 4, 30)
+                    )
 
 
 
@@ -342,7 +345,8 @@ class TestTransformFuturesData:
         assert r["open"] == 4000.0
         assert r["close"] == 4050.0
         assert r["volume"] == 50000
-        assert r["change_pct"] == 1.25
+        assert r["open_interest"] == 0
+        assert r["settle_price"] is None
 
     def test_transform_futures_empty(self, collector: AKShareCollector):
         result = collector._transform_futures_data(pd.DataFrame(), "IF9999")
