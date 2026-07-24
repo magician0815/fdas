@@ -1,0 +1,19 @@
+[Unit]
+Description=FDAS Scheduler Service
+After=fdas-backend.service
+Requires=fdas-backend.service
+
+[Service]
+Type=simple
+User=fdas
+Group=fdas
+WorkingDirectory=/opt/fdas/backend
+EnvironmentFile=/opt/fdas/backend/.env
+ExecStart=/opt/fdas/backend/venv/bin/python -c "import asyncio; from app.services.scheduler_service import scheduler_service; asyncio.run(scheduler_service.start())"
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/fdas/logs/scheduler.log
+StandardError=append:/opt/fdas/logs/scheduler-error.log
+
+[Install]
+WantedBy=multi-user.target

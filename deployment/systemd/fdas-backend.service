@@ -1,0 +1,20 @@
+[Unit]
+Description=FDAS Backend Service
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=fdas
+Group=fdas
+WorkingDirectory=/opt/fdas/backend
+EnvironmentFile=/opt/fdas/backend/.env
+ExecStart=/opt/fdas/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/fdas/logs/backend.log
+StandardError=append:/opt/fdas/logs/backend-error.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,142 +1,43 @@
-# FDAS版本变更日志模板
+# FDAS 版本变更日志
 
-## 版本 X.X.X (示例)
+## V1.0.0 — 正式首发版本 (2026-07-24)
 
-**发布日期**: YYYY-MM-DD
+### 核心功能
 
----
+- **多市场数据采集**: 外汇/A股/期货/债券/港股/美股/加密货币 7个市场
+- **KLineChart v10**: Canvas K线图引擎，27个内置指标 + 15种画线工具
+- **MarketProfile**: 声明式市场配置系统，新增市场只需注册配置
+- **双源主备**: 外汇(东方财富+BOC)、A股(新浪+腾讯) 自动回退
+- **多标的采集**: 一个任务包含多个标的，逐个采集 + 指数退避重试
+- **Dashboard**: ECharts 统计图表 + KLineChart K线图
+- **权限管理**: bcrypt密码哈希 + Session认证 + slowapi限流 + admin角色
 
-### 新增功能
+### 部署方案
 
-- 功能1: 简要描述
-- 功能2: 简要描述
+- **方案A**: 传统Linux服务器裸机部署 (PostgreSQL + Nginx + systemd)
+- **方案B**: Docker Desktop 容器化部署 (多容器/单容器)
+- **部署脚本**: deploy.sh 一键部署 (含健康检查/环境验证/密钥生成)
+- **运维工具**: 备份/恢复/升级/回滚/健康检查/migration
 
-### 功能改进
+### 技术栈
 
-- 改进1: 简要描述
-- 改进2: 简要描述
+- 后端: Python 3.13 + FastAPI + SQLAlchemy + APScheduler + AKShare
+- 前端: Vue 3 + Vite + KLineChart v10 + ECharts + Element Plus + TypeScript
+- 数据库: PostgreSQL 16 (分区表，年度范围分区)
+- 测试: 882 后端 + 847 前端 (全部通过)
 
-### Bug修复
+### 安全加固
 
-- Bug1: 描述 + Issue编号
-- Bug2: 描述 + Issue编号
-
----
-
-### 数据库变更
-
-| 类型 | 说明 |
-|------|------|
-| 新增表 | `table_name` - 表用途说明 |
-| 新增字段 | `table.field` - 字段用途说明 |
-| 新增索引 | `idx_name` - 索引用途说明 |
-| 数据迁移 | 数据迁移说明 |
-
-**迁移脚本**: `versions/X.X.X/migrations.sql`
-
----
-
-### API变更
-
-| 类型 | 接口 | 说明 |
-|------|------|------|
-| 新增 | `/api/v1/xxx` | 接口说明 |
-| 修改 | `/api/v1/xxx` | 参数变更说明 |
-| 删除 | `/api/v1/xxx` | 删除原因说明 |
+- SESSION_SECRET 强制配置 (≥32字符)
+- bcrypt 密码哈希 (rounds=12)
+- slowapi API限流
+- CORS 白名单配置
+- session IP校验
+- Nginx 安全头 (X-Frame-Options, X-Content-Type-Options, X-XSS-Protection)
 
 ---
 
-### 前端变更
+## 版本历史 (迁移前)
 
-| 类型 | 组件/文件 | 说明 |
-|------|---------|------|
-| 新增 | `Component.vue` | 组件说明 |
-| 修改 | `Component.vue` | 修改说明 |
-
----
-
-### 配置变更
-
-| 配置项 | 变更类型 | 说明 |
-|--------|---------|------|
-| `NEW_CONFIG` | 新增 | 配置说明 |
-| `OLD_CONFIG` | 修改默认值 | 新默认值说明 |
-
----
-
-### 部署注意事项
-
-1. 执行数据库迁移:
-   ```bash
-   cd deployment-packages/update
-   ./upgrade.sh --version X.X.X
-   ```
-
-2. 更新环境变量:
-   - 添加新配置项
-   - 修改默认值
-
-3. 重启服务:
-   ```bash
-   docker-compose restart fdas-app
-   ```
-
----
-
-### 升级步骤
-
-**多容器方案**:
-```bash
-# 检查当前版本
-curl http://localhost:8000/api/health
-
-# 升级
-cd deployment-packages/update
-./upgrade.sh --version X.X.X
-
-# 验证
-curl http://localhost:8000/api/health
-```
-
-**单容器方案**:
-```bash
-# 停止服务
-supervisorctl stop fdas_backend
-
-# 执行数据库迁移
-psql -U fdas -d fdas -f versions/X.X.X/migrations.sql
-
-# 更新代码
-git pull origin main
-
-# 重启服务
-supervisorctl start fdas_backend
-```
-
----
-
-### 回滚步骤
-
-如升级后发现问题，执行回滚:
-```bash
-cd deployment-packages/update
-./rollback.sh --version X.X.X
-```
-
----
-
-### 兼容性说明
-
-- Python版本要求: 3.13+
-- PostgreSQL版本要求: 16+
-- Node.js版本要求: 18+
-
----
-
-### 安全更新
-
-| 项目 | 说明 |
-|------|------|
-| SESSION_SECRET | 无变更 |
-| CORS | 新增允许域名配置 |
-| 密码策略 | 无变更 |v2.5.0 - KLineChart 图表引擎重构 (2026-07-21)
+FDAS 在 V1.0.0 之前经历了 v2.0.1 → v2.5.0 的迭代周期。
+V1.0.0 为全新起点，之前版本不再追溯。
