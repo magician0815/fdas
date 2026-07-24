@@ -10,7 +10,7 @@
 
 ## 一、重构概述
 
-v2.5.0 起，金融 K 线图表由自研 ECharts 方案迁移至 [KLineChart](https://github.com/klinecharts/KLineChart) v10.0.0 (MIT License)。
+V1.0.0 起，金融 K 线图表由自研 ECharts 方案迁移至 [KLineChart](https://github.com/klinecharts/KLineChart) v10.0.0 (MIT License)。
 
 **迁移原因**: KLineChart 内置 27 个指标 + 15 种画线工具 + 自动 Pane 布局，替换约 7,000 行自研代码。
 
@@ -24,7 +24,7 @@ v2.5.0 起，金融 K 线图表由自研 ECharts 方案迁移至 [KLineChart](ht
 |--------|------|------|
 | 市场范围 | 先外汇完整功能 → 再股票 → 再期货 | 分阶段扩展 |
 | 开发方式 | 按最小功能点逐个开发 | |
-| 渲染引擎 | 继续使用ECharts | 注：K线已迁移至KLineChart v10（v2.5.0），ECharts仅用于Dashboard |
+| 渲染引擎 | 继续使用ECharts | 注：K线已迁移至KLineChart v10（V1.0.0），ECharts仅用于Dashboard |
 | 实时数据 | 暂不考虑，页面刷新获取最新数据 | |
 | 画线存储 | 画线内容不保存（刷新消失），工具设置保存在服务端 | 新建user_chart_settings表 |
 | 历史数据 | 根据后台存储时间长度确定范围 | |

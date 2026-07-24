@@ -10,7 +10,7 @@
 
 ## 一、方案概述
 
-FDAS v2.5.0 起，金融K线图表由自研 ECharts 方案迁移至 [KLineChart](https://github.com/klinecharts/KLineChart) (MIT License) 开源图表库。
+FDAS V1.0.0 起，金融K线图表由自研 ECharts 方案迁移至 [KLineChart](https://github.com/klinecharts/KLineChart) (MIT License) 开源图表库。
 
 ### 迁移原因
 

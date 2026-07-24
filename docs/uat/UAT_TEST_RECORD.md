@@ -1,7 +1,7 @@
 # FDAS UAT测试记录文档
 
 > 金融数据抓取与分析系统 - 用户验收测试记录
-> Version: v2.0.1
+> Version: V1.0.0
 > Test Date: 2026-04-17
 > Tester: [测试人员姓名]
 > Environment: 测试环境 (localhost:8000)
@@ -12,7 +12,7 @@
 
 | 项目 | 信息 |
 |------|------|
-| 系统版本 | v2.0.1 |
+| 系统版本 | V1.0.0 |
 | 前端地址 | http://localhost:8000 |
 | API文档 | http://localhost:8000/api/docs |
 | 默认账号 | admin / admin123 |

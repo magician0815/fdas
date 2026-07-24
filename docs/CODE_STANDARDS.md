@@ -1147,7 +1147,7 @@ const fxData: Ref<FXDataItem[]> = ref([])
 
 ---
 
-## 九、KLineChart 图表组件编码规范 (v2.5.0 新增)
+## 九、KLineChart 图表组件编码规范 (V1.0.0 新增)
 
 ### 9.1 统一渲染引擎原则（强制）
 

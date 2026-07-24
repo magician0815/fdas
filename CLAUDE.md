@@ -27,7 +27,7 @@
 ## 已知问题/陷阱
 - AKShare 部分接口返回中文货币对名，解析时注意编码
 - datetime.utcnow 已弃用，使用 datetime.now(timezone.utc)
-- v2.5.0: KLineChart 替代 ECharts 作为 K 线渲染引擎（ECharts 仅用于 Dashboard）
+- V1.0.0: KLineChart 替代 ECharts 作为 K 线渲染引擎（ECharts 仅用于 Dashboard）
 - KLineChart 自定义扩展通过 registerIndicator/registerOverlay 全局注册
 - MarketProfile 驱动 7 个市场的差异化行为，新增市场只需注册配置
 - Docker Desktop macOS 卷挂载有缓存问题，更新前端后需 restart 容器

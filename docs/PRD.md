@@ -17,7 +17,7 @@
 ### 1.2 核心目标
 
 1. **自动化数据采集**：定时从AKShare采集USDCNH汇率数据，入库存储
-2. **数据可视化展示**：KLineChart Canvas渲染K线图、均线图、MACD图（v2.5.0升级）
+2. **数据可视化展示**：KLineChart Canvas渲染K线图、均线图、MACD图（V1.0.0升级）
 3. **配置化管理**：Web端配置数据源、采集任务参数
 4. **用户权限管理**：区分admin/user角色，权限差异化控制
 
@@ -80,7 +80,7 @@
 | **数据采集层** | Python + AKShare + APScheduler + tenacity | 数据抓取与任务调度 |
 | **数据存储层** | PostgreSQL 16 | 数据持久化，索引优化 |
 | **后端服务层** | FastAPI + SQLAlchemy 2.0 + Pydantic | API服务，业务逻辑 |
-| **前端展示层** | Vue 3 + Element Plus + ECharts, KLineChart(v2.5.0 K线迁移) | 数据可视化展示 |
+| **前端展示层** | Vue 3 + Element Plus + ECharts, KLineChart(V1.0.0 K线迁移) | 数据可视化展示 |
 | **集成对接层** | 飞书Webhook（预留） | 告警推送接口 |
 
 ### 3.2 容器架构
@@ -158,7 +158,7 @@
 2. **缓存检查**：内存缓存检查30天内热点数据
 3. **数据查询**：未命中缓存则查询PostgreSQL，利用索引加速
 4. **技术指标**：TA-Lib计算MA/MACD指标
-5. **图表渲染**：KLineChart渲染K线图（v2.5.0起替换ECharts）
+5. **图表渲染**：KLineChart渲染K线图（V1.0.0起替换ECharts）
 
 ### 4.3 用户认证流程
 

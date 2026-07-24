@@ -1,6 +1,6 @@
 # FDAS K线功能用户验收测试计划
 
-> 版本: v2.5.0 (KLineChart 图表引擎重构)
+> 版本: V1.0.0 (KLineChart 图表引擎重构)
 > 测试日期: ________
 > 测试人员: ________
 > 环境: http://localhost:8000 (Docker fdas-app + fdas-db)

@@ -1722,7 +1722,7 @@ async function handleLogin() {
 
 ### 10.2 数据可视化页面
 
-**(v2.5.0 起已废弃) — 图表渲染已迁移至 KLineChart + MarketOverview.vue，本节保留仅供历史参考**
+**(V1.0.0 起已废弃) — 图表渲染已迁移至 KLineChart + MarketOverview.vue，本节保留仅供历史参考**
 
 ```vue
 <!-- frontend/src/views/FXData.vue -->
@@ -1770,7 +1770,7 @@ async function fetchData() {
 
 ### 10.3 ECharts图表组件
 
-**(v2.5.0 起已废弃) — 图表渲染已迁移至 KLineChart + MarketOverview.vue，本节保留仅供历史参考**
+**(V1.0.0 起已废弃) — 图表渲染已迁移至 KLineChart + MarketOverview.vue，本节保留仅供历史参考**
 
 ```vue
 <!-- frontend/src/components/FXChart.vue -->
