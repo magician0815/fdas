@@ -21,6 +21,7 @@ from app.collectors.macro_nyfed_excel import MacroNYFedExcelCollector
 from app.collectors.macro_richmond_html import MacroRichmondHTMLCollector
 from app.collectors.macro_fomc_sep import MacroFOMCSEPCollector
 from app.collectors.macro_feds_notes import MacroFEDSNotesCollector
+from app.collectors.macro_fred_csv import MacroFREDCSVCollector
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,9 @@ COLLECTOR_CLASS_MAP = {
     "r-star-LM": MacroRichmondHTMLCollector,
     "r-sep": MacroFOMCSEPCollector,
     "longer-run-neutral": MacroFEDSNotesCollector,
+    "real_gdp": MacroFREDCSVCollector,
+    "potential_gdp": MacroFREDCSVCollector,
+    "core_pce": MacroFREDCSVCollector,
 }
 
 

@@ -4,12 +4,15 @@
 
     <!-- 筛选栏 -->
     <div class="filter-bar">
-      <el-select v-model="filters.indicator_key" placeholder="选择指标" clearable style="width: 220px">
+      <el-select v-model="filters.indicator_key" placeholder="选择指标" clearable style="width: 240px">
         <el-option label="r-star (LW 模型)" value="r_star_lw" />
         <el-option label="r-star (HLW 模型)" value="r_star_hlw" />
         <el-option label="r-star (LM 模型)" value="r_star_lm" />
         <el-option label="SEP 长期联邦基金利率中位值" value="sep_median" />
         <el-option label="长期中性利率 (美国)" value="longer_run_neutral" />
+        <el-option label="核心PCE价格指数" value="core_pce" />
+        <el-option label="实际GDP" value="real_gdp" />
+        <el-option label="潜在GDP" value="potential_gdp" />
       </el-select>
 
       <el-date-picker

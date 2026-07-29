@@ -1267,4 +1267,28 @@ VALUES
  '{"frequency": "semi-annual", "indicator_key": "longer_run_neutral", "download_pattern": "rstar-values-feds-note.csv"}',
  '0 9 1 * *',
  '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}')
+('real_gdp', 'real_gdp', 'csv',
+ '美国实际GDP (Real GDP), 经通胀调整, 十亿2017年美元, 季调年率, 季度更新',
+ 'https://fred.stlouisfed.org/series/GDPC1',
+ 'pandas',
+ '{"sid": "GDPC1", "date_col": "observation_date", "value_col": "GDPC1", "frequency": "quarterly", "unit": "Billions of Chained 2017 Dollars", "indicator_key": "real_gdp", "url_template": "https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"}',
+ '0 9 1-7 * *',
+ '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}'),
+
+('potential_gdp', 'potential_gdp', 'csv',
+ '美国潜在GDP (Real Potential GDP), CBO估算, 十亿2017年美元, 季度更新',
+ 'https://fred.stlouisfed.org/series/GDPPOT',
+ 'pandas',
+ '{"sid": "GDPPOT", "date_col": "observation_date", "value_col": "GDPPOT", "frequency": "quarterly", "unit": "Billions of Chained 2017 Dollars", "indicator_key": "potential_gdp", "url_template": "https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"}',
+ '0 9 1,4,7,10 * *',
+ '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}'),
+
+('core_pce', 'core_pce', 'csv',
+ '美国核心PCE价格指数 (Core PCE), 剔除食品和能源, 指数(2017=100), 月度更新',
+ 'https://fred.stlouisfed.org/series/PCEPILFE',
+ 'pandas',
+ '{"sid": "PCEPILFE", "date_col": "observation_date", "value_col": "PCEPILFE", "frequency": "monthly", "unit": "Index 2017=100", "indicator_key": "core_pce", "url_template": "https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}"}',
+ '0 9 10-15 * *',
+ '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}')
+
 ON CONFLICT (source_code) DO NOTHING;
