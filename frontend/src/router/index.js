@@ -60,6 +60,25 @@ const routes = [
     component: () => import('@/views/Logs.vue'),
     meta: { requiresAuth: true, requiresAdmin: true, title: '系统日志' }
   },
+  // === 宏观数据模块 (V2.0) ===
+  {
+    path: '/macro',
+    name: 'MacroDashboard',
+    component: () => import('@/views/MacroDashboard.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '宏观数据总览' }
+  },
+  {
+    path: '/macro/configs',
+    name: 'MacroConfigs',
+    component: () => import('@/views/MacroConfigs.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '宏观数据源配置' }
+  },
+  {
+    path: '/macro/data',
+    name: 'MacroData',
+    component: () => import('@/views/MacroData.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '宏观数据查询' }
+  },
 ]
 
 // 创建路由实例

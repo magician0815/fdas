@@ -1075,3 +1075,196 @@ SELECT
     CURRENT_TIMESTAMP
 FROM markets m WHERE m.code = 'bond_us'
 ON CONFLICT (name) DO NOTHING;
+
+-- ============================================
+-- 宏观数据采集模块 (V2.0)
+-- ============================================
+
+-- 宏观数据源配置表
+CREATE TABLE IF NOT EXISTS macro_datasource_configs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL UNIQUE,
+    source_code VARCHAR(50) NOT NULL UNIQUE,
+    source_type VARCHAR(30) NOT NULL,
+    description TEXT,
+    url TEXT NOT NULL,
+    parse_engine VARCHAR(30) NOT NULL DEFAULT 'pandas',
+    parse_config JSONB NOT NULL DEFAULT '{}',
+    headers JSONB,
+    request_method VARCHAR(10) DEFAULT 'GET',
+    timeout_seconds INTEGER DEFAULT 60,
+    retry_max_attempts INTEGER DEFAULT 3,
+    retry_backoff_factor REAL DEFAULT 2.0,
+    cron_expr VARCHAR(100),
+    is_enabled BOOLEAN DEFAULT true,
+    last_collected_at TIMESTAMP WITH TIME ZONE,
+    last_status VARCHAR(20),
+    last_message TEXT,
+    last_records_count INTEGER DEFAULT 0,
+    config_version VARCHAR(20) DEFAULT '1.0',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE macro_datasource_configs IS '宏观数据源配置表';
+COMMENT ON COLUMN macro_datasource_configs.id IS '配置唯一标识ID';
+COMMENT ON COLUMN macro_datasource_configs.name IS '数据源显示名称';
+COMMENT ON COLUMN macro_datasource_configs.source_code IS '数据源代码(r-star-LW/r-star-HLW/r-star-LM/r-sep/longer-run-neutral)';
+COMMENT ON COLUMN macro_datasource_configs.source_type IS '数据源类型(excel/html/json/csv)';
+COMMENT ON COLUMN macro_datasource_configs.description IS '数据源描述说明';
+COMMENT ON COLUMN macro_datasource_configs.url IS '数据源URL地址';
+COMMENT ON COLUMN macro_datasource_configs.parse_engine IS '解析引擎(openpyxl/beautifulsoup/jsonpath)';
+COMMENT ON COLUMN macro_datasource_configs.parse_config IS '解析规则配置(JSON对象)';
+COMMENT ON COLUMN macro_datasource_configs.headers IS 'HTTP请求头(JSON对象)';
+COMMENT ON COLUMN macro_datasource_configs.request_method IS 'HTTP请求方法(GET/POST)';
+COMMENT ON COLUMN macro_datasource_configs.timeout_seconds IS '请求超时时间(秒)';
+COMMENT ON COLUMN macro_datasource_configs.retry_max_attempts IS '最大重试次数';
+COMMENT ON COLUMN macro_datasource_configs.retry_backoff_factor IS '重试退避因子';
+COMMENT ON COLUMN macro_datasource_configs.cron_expr IS '定时采集Cron表达式';
+COMMENT ON COLUMN macro_datasource_configs.is_enabled IS '是否启用定时采集';
+COMMENT ON COLUMN macro_datasource_configs.last_collected_at IS '上次采集时间';
+COMMENT ON COLUMN macro_datasource_configs.last_status IS '上次采集状态(success/failed/partial)';
+COMMENT ON COLUMN macro_datasource_configs.last_message IS '上次采集消息';
+COMMENT ON COLUMN macro_datasource_configs.last_records_count IS '上次采集记录数';
+COMMENT ON COLUMN macro_datasource_configs.config_version IS '配置版本号';
+COMMENT ON COLUMN macro_datasource_configs.created_at IS '创建时间';
+COMMENT ON COLUMN macro_datasource_configs.updated_at IS '更新时间';
+
+-- 宏观数据点表(按publish_date分区)
+CREATE TABLE IF NOT EXISTS macro_data_points (
+    id UUID DEFAULT uuid_generate_v4(),
+    config_id UUID NOT NULL REFERENCES macro_datasource_configs(id) ON DELETE CASCADE,
+    source_code VARCHAR(50) NOT NULL,
+    country VARCHAR(30),
+    series_name VARCHAR(200) NOT NULL,
+    indicator_key VARCHAR(100) NOT NULL,
+    value NUMERIC(20, 10),
+    publish_date DATE NOT NULL,
+    period_date DATE,
+    frequency VARCHAR(20) DEFAULT 'quarterly',
+    forecast_year INTEGER,
+    unit VARCHAR(50),
+    metadata JSONB DEFAULT '{}',
+    raw_source_hash VARCHAR(64),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_macro_data_point UNIQUE(config_id, indicator_key, period_date, publish_date)
+) PARTITION BY RANGE (publish_date);
+
+COMMENT ON TABLE macro_data_points IS '宏观数据点表(按publish_date分区)';
+COMMENT ON COLUMN macro_data_points.id IS '数据唯一标识ID';
+COMMENT ON COLUMN macro_data_points.config_id IS '关联配置ID';
+COMMENT ON COLUMN macro_data_points.source_code IS '数据源代码';
+COMMENT ON COLUMN macro_data_points.country IS '国家/地区';
+COMMENT ON COLUMN macro_data_points.series_name IS '数据系列名称';
+COMMENT ON COLUMN macro_data_points.indicator_key IS '指标键名(r_star_lw/r_star_hlw/r_star_lm/sep_median等)';
+COMMENT ON COLUMN macro_data_points.value IS '数值';
+COMMENT ON COLUMN macro_data_points.publish_date IS '发布日期(分区键)';
+COMMENT ON COLUMN macro_data_points.period_date IS '数据所属期间日期';
+COMMENT ON COLUMN macro_data_points.frequency IS '数据频率(quarterly/by_meeting/annual)';
+COMMENT ON COLUMN macro_data_points.forecast_year IS '预测年份(SEP数据专用)';
+COMMENT ON COLUMN macro_data_points.unit IS '单位(percent/percentage_point)';
+COMMENT ON COLUMN macro_data_points.metadata IS '元数据(置信区间/多国细分/政策区间)';
+COMMENT ON COLUMN macro_data_points.raw_source_hash IS '原始数据行哈希(用于增量去重)';
+COMMENT ON COLUMN macro_data_points.created_at IS '创建时间';
+
+-- 分区创建(2020-2028)
+CREATE TABLE IF NOT EXISTS macro_data_points_2020 PARTITION OF macro_data_points
+    FOR VALUES FROM ('2020-01-01') TO ('2021-01-01');
+CREATE TABLE IF NOT EXISTS macro_data_points_2021 PARTITION OF macro_data_points
+    FOR VALUES FROM ('2021-01-01') TO ('2022-01-01');
+CREATE TABLE IF NOT EXISTS macro_data_points_2022 PARTITION OF macro_data_points
+    FOR VALUES FROM ('2022-01-01') TO ('2023-01-01');
+CREATE TABLE IF NOT EXISTS macro_data_points_2023 PARTITION OF macro_data_points
+    FOR VALUES FROM ('2023-01-01') TO ('2024-01-01');
+CREATE TABLE IF NOT EXISTS macro_data_points_2024 PARTITION OF macro_data_points
+    FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+CREATE TABLE IF NOT EXISTS macro_data_points_2025 PARTITION OF macro_data_points
+    FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+CREATE TABLE IF NOT EXISTS macro_data_points_2026 PARTITION OF macro_data_points
+    FOR VALUES FROM ('2026-01-01') TO ('2027-01-01');
+CREATE TABLE IF NOT EXISTS macro_data_points_2027 PARTITION OF macro_data_points
+    FOR VALUES FROM ('2027-01-01') TO ('2028-01-01');
+CREATE TABLE IF NOT EXISTS macro_data_points_default PARTITION OF macro_data_points
+    DEFAULT;
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_macro_configs_source_code ON macro_datasource_configs(source_code);
+CREATE INDEX IF NOT EXISTS idx_macro_configs_enabled ON macro_datasource_configs(is_enabled);
+CREATE INDEX IF NOT EXISTS idx_macro_data_config_id ON macro_data_points(config_id);
+CREATE INDEX IF NOT EXISTS idx_macro_data_source_code ON macro_data_points(source_code);
+CREATE INDEX IF NOT EXISTS idx_macro_data_indicator_key ON macro_data_points(indicator_key);
+CREATE INDEX IF NOT EXISTS idx_macro_data_publish_date ON macro_data_points(publish_date DESC);
+CREATE INDEX IF NOT EXISTS idx_macro_data_country ON macro_data_points(country);
+
+-- 宏观采集日志表
+CREATE TABLE IF NOT EXISTS macro_collection_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    config_id UUID NOT NULL REFERENCES macro_datasource_configs(id) ON DELETE CASCADE,
+    run_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    records_count INTEGER DEFAULT 0,
+    message TEXT,
+    duration_ms INTEGER,
+    is_full BOOLEAN DEFAULT false,
+    error_detail TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE macro_collection_logs IS '宏观数据采集执行日志表';
+COMMENT ON COLUMN macro_collection_logs.id IS '日志唯一标识ID';
+COMMENT ON COLUMN macro_collection_logs.config_id IS '关联配置ID';
+COMMENT ON COLUMN macro_collection_logs.run_at IS '执行时间';
+COMMENT ON COLUMN macro_collection_logs.status IS '执行状态(success/failed/partial/running)';
+COMMENT ON COLUMN macro_collection_logs.records_count IS '采集记录数';
+COMMENT ON COLUMN macro_collection_logs.message IS '执行消息';
+COMMENT ON COLUMN macro_collection_logs.duration_ms IS '执行耗时(毫秒)';
+COMMENT ON COLUMN macro_collection_logs.is_full IS '是否全量采集';
+COMMENT ON COLUMN macro_collection_logs.error_detail IS '错误详情';
+COMMENT ON COLUMN macro_collection_logs.created_at IS '创建时间';
+
+CREATE INDEX IF NOT EXISTS idx_macro_logs_config_id ON macro_collection_logs(config_id);
+CREATE INDEX IF NOT EXISTS idx_macro_logs_run_at ON macro_collection_logs(run_at DESC);
+
+-- 种子数据: 5个默认数据源配置
+INSERT INTO macro_datasource_configs (name, source_code, source_type, description, url, parse_engine, parse_config, cron_expr, headers)
+VALUES
+('r-star-LW', 'r-star-LW', 'excel',
+ 'NY Fed Laubach-Williams模型美国自然利率，季度更新',
+ 'https://www.newyorkfed.org/research/policy/rstar',
+ 'openpyxl',
+ '{"sheet_name": "data", "skiprows": 0, "frequency": "quarterly", "columns": {"date": "Date", "r_star_lw": "r-star"}, "indicator_key": "r_star_lw", "country": "US", "download_pattern": "Laubach_Williams_current_estimates.xlsx"}',
+ '0 9 * * 5',
+ '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}'),
+
+('r-star-HLW', 'r-star-HLW', 'excel',
+ 'NY Fed Holston-Laubach-Williams模型美国自然利率，季度更新',
+ 'https://www.newyorkfed.org/research/policy/rstar',
+ 'openpyxl',
+ '{"sheet_name": "HLW Estimates", "skiprows": 5, "frequency": "quarterly", "columns": {"date_col": 1}, "country_columns": {"US": 11}, "indicator_key": "r_star_hlw", "multi_country": false, "download_pattern": "Holston_Laubach_Williams_current_estimates.xlsx"}',
+ '0 9 * * 5',
+ '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}'),
+
+('r-star-LM', 'r-star-LM', 'html',
+ 'Richmond Fed Lubik-Matthes自然利率模型，基于TVP-VAR，数据自1967Q1起',
+ 'https://www.richmondfed.org/research/national_economy/natural_rate_interest',
+ 'beautifulsoup',
+ '{"data_element_id": "data-natural_rate_chart", "frequency": "quarterly", "indicator_key": "r_star_lm", "country": "US"}',
+ '0 10 * * 5',
+ '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}'),
+
+('r-sep', 'r-sep', 'html',
+ 'FOMC经济预测摘要(SEP)长期联邦基金利率中位估计，每年8次会议后发布',
+ 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm',
+ 'beautifulsoup',
+ '{"parse_mode": "septable", "frequency": "by_meeting", "calendar_page": true, "proj_url_template": "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl{date}.htm", "indicator_keys": {"median": "sep_median", "central_low": "sep_central_low", "central_high": "sep_central_high", "range_low": "sep_range_low", "range_high": "sep_range_high"}, "country": "US"}',
+ '30 16 * * 3',
+ '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}'),
+
+('longer-run-neutral', 'longer-run-neutral', 'csv',
+ 'FEDS Notes美国长期中性利率估算，半年度更新',
+ 'https://www.federalreserve.gov/econres/notes/feds-notes/real-time-global-longer-run-neutral-rates-20250409.html',
+ 'beautifulsoup',
+ '{"frequency": "semi-annual", "indicator_key": "longer_run_neutral", "download_pattern": "rstar-values-feds-note.csv"}',
+ '0 9 1 * *',
+ '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}')
+ON CONFLICT (source_code) DO NOTHING;

@@ -2,7 +2,87 @@
 
 ---
 
-### 2026-04-24 更新: 测试修复完成
+### 2026-07-29 更新: V2.0 宏观数据采集模块 — 第一批需求开发
+
+**版本**: 1.0.0 → 2.0.0
+
+**完成内容 (Phase 1-5)**:
+
+| Phase | 内容 | 新建文件 | 修改文件 | 状态 |
+|-------|------|----------|----------|------|
+| **Phase 1**: 基础设施 | 数据库 DDL + ORM + Schema + 依赖 | 6 | 4 | ✅ |
+| **Phase 2**: 采集器 | 基类 + 5 个采集器实现 | 5 | 0 | ✅ |
+| **Phase 3**: 服务层 | 配置管理 + 采集编排 + main.py 集成 | 2 | 1 | ✅ |
+| **Phase 4**: API 层 | 配置/数据/采集 API + 路由注册 | 3 | 1 | ✅ |
+| **Phase 5**: 前端 | 3 页面 + API 服务 + 路由 + 侧边栏 | 4 | 2 | ✅ |
+
+**新建文件 (22 个)**:
+
+后端 (18 个):
+- `app/models/macro_config.py`, `macro_data.py`, `macro_log.py`
+- `app/schemas/macro_config.py`, `macro_data.py`, `macro_log.py`
+- `app/collectors/macro_base_collector.py`
+- `app/collectors/macro_nyfed_excel.py`, `macro_richmond_html.py`
+- `app/collectors/macro_fomc_sep.py`, `macro_feds_notes.py`
+- `app/services/macro_config_service.py`, `macro_collection_service.py`
+- `app/api/v1/macro_configs.py`, `macro_data.py`, `macro_collection.py`
+
+前端 (4 个):
+- `api/macro.js`
+- `views/MacroDashboard.vue`, `MacroConfigs.vue`, `MacroData.vue`
+
+**修改文件 (7 个)**:
+- `docker/init-db.sql` — 新增 3 张表 + 种子数据
+- `backend/app/main.py` — 路由注册 + lifespan 集成
+- `backend/app/models/__init__.py` — 注册新模型
+- `backend/requirements.txt` — 新增依赖
+- `frontend/src/router/index.js` — 新增 3 条路由
+- `frontend/src/components/Sidebar.vue` — 新增"宏观数据"菜单
+
+**待完成**:
+- [ ] 安装新 Python 依赖
+- [ ] 编写测试用例 (单元测试 + 集成测试)
+- [ ] 实际数据源 URL 验证和 parse_config 调优
+
+**版本**: V2.0.0
+**状态**: ✅ 全部完成 — 5 个数据源 / 893 条美国宏观数据 / 测试 26 passed
+
+### 最终数据统计
+
+| 数据源 | 国家 | 记录数 | 时间范围 |
+|--------|------|--------|----------|
+| r-star-LW | 美国 | 261 | 1961-2026 (季度) |
+| r-star-HLW | 美国 | 261 | 1961-2026 (季度) |
+| r-star-LM | 美国 | 237 | 1967-2026 (季度) |
+| r-sep | 美国 | 21 | 2021-2026 (8次/年) |
+| longer-run-neutral | 美国 | 133 | 1960-2026 (半年度) |
+| **总计** | | **893** | |
+
+### 本次提交文件
+
+后端 18 新建 + 7 修改, 前端 4 新建 + 2 修改, 数据库 DDL, 测试 7 文件, 文档 5 文件
+
+### 2026-07-29 最终验证: 全部采集器端到端测试
+
+**采集数据统计**:
+
+| 数据源 | 记录数 | 时间范围 | 覆盖 |
+|--------|--------|----------|------|
+| r-star-LW | 261 | 1961-2026 | 美国 |
+| r-star-HLW | 739 | 1961-2026 | 美/加/欧元区 |
+| r-star-LM | 237 | 1967-2026 | 美国(含置信区间) |
+| r-sep | 1 | 2026-06-17 | 美国 SEP Median |
+| longer-run-neutral | 1463 | 1960-2026 | 11国半年度 |
+| **总计** | **2701** | | |
+
+**关键问题修复**: LW/HLW多段表头、LM嵌入CSV、SEP日历→表格、longer-run-neutral API 404→FEDS Notes CSV、日期解析、ON CONFLICT去重
+
+**测试**: 26 passed, 3 skipped
+
+
+> 最后更新: 2026-07-29
+
+## 当前版本: 2.0.0-alpha
 
 **版本**: 2.2.2 → 测试修复
 

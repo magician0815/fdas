@@ -26,6 +26,9 @@ from app.models.stock_symbol import StockSymbol
 from app.models.stock_daily import StockDaily
 from app.models.bond_symbol import BondSymbol
 from app.models.bond_daily import BondDaily
+from app.models.macro_config import MacroDataSourceConfig
+from app.models.macro_data import MacroDataPoint
+from app.models.macro_log import MacroCollectionLog
 
 __all__ = [
     "Base",
@@ -46,4 +49,7 @@ __all__ = [
     "StockDaily",
     "BondSymbol",
     "BondDaily",
+    "MacroDataSourceConfig",
+    "MacroDataPoint",
+    "MacroCollectionLog",
 ]

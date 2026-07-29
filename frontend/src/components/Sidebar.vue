@@ -75,6 +75,31 @@
         <el-icon><Document /></el-icon>
         <template #title>系统日志</template>
       </el-menu-item>
+
+      <!-- 宏观数据模块 (V2.0) -->
+      <el-sub-menu index="macro-data" v-if="isAdmin && !collapsed">
+        <template #title>
+          <el-icon><TrendCharts /></el-icon>
+          <span>宏观数据</span>
+        </template>
+        <el-menu-item index="/macro">
+          <el-icon><DataBoard /></el-icon>
+          <template #title>总览</template>
+        </el-menu-item>
+        <el-menu-item index="/macro/configs">
+          <el-icon><Setting /></el-icon>
+          <template #title>数据源配置</template>
+        </el-menu-item>
+        <el-menu-item index="/macro/data">
+          <el-icon><Search /></el-icon>
+          <template #title>数据查询</template>
+        </el-menu-item>
+      </el-sub-menu>
+
+      <el-menu-item index="/macro" v-if="isAdmin && collapsed">
+        <el-icon><TrendCharts /></el-icon>
+        <template #title>宏观数据</template>
+      </el-menu-item>
     </el-menu>
 
     <!-- 底部折叠按钮 -->
@@ -103,7 +128,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { Connection, Timer, User, Document, Expand, Fold, Setting, DataAnalysis } from '@element-plus/icons-vue'
+import { Connection, Timer, User, Document, Expand, Fold, Setting, DataAnalysis, TrendCharts, DataBoard, Search } from '@element-plus/icons-vue'
 
 // Props
 defineProps({

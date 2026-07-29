@@ -232,6 +232,41 @@
 | 31 | 增强功能 | 前端 | P9 | 移动端适配、离线缓存 |
 | 32 | 辅助功能 | 前端 | P10 | 使用帮助按钮、帮助内容抽屉 |
 
+### 5.3 V2.0 宏观数据采集模块（第三阶段新增）
+
+V2.0 采用小需求迭代增补方式，从美联储官方数据源采集自然利率(r-star)宏观时序数据。
+
+详见 `docs/V2_MACRO_DESIGN.md`。
+
+| # | 模块 | 类型 | 优先级 | 说明 |
+|---|------|------|--------|------|
+| 33 | 数据库设计 | 后端 | P0 | macro_datasource_configs + macro_data_points + macro_collection_logs |
+| 34 | 采集器基类 | 后端 | P0 | MacroBaseCollector (httpx + tenacity + 增量采集) |
+| 35 | NY Fed Excel 采集器 | 后端 | P1 | r-star-LW + r-star-HLW (openpyxl) |
+| 36 | Richmond HTML 采集器 | 后端 | P1 | r-star-LM (beautifulsoup) |
+| 37 | FOMC SEP 采集器 | 后端 | P1 | r-sep (SEP表格解析) |
+| 38 | FEDS Notes 采集器 | 后端 | P1 | longer-run-neutral (catalog.data.gov API) |
+| 39 | 配置管理服务 | 后端 | P0 | 配置 CRUD + 采集器工厂 |
+| 40 | 采集编排服务 | 后端 | P0 | 全量/增量采集 + 调度管理 |
+| 41 | 宏观配置 API | 后端 | P0 | 配置 CRUD + 启用/禁用调度 |
+| 42 | 宏观数据 API | 后端 | P0 | 分页查询 + 过滤 + 最新数据 |
+| 43 | 宏观采集 API | 后端 | P0 | 手动触发采集 + 日志查询 |
+| 44 | 宏观看板页面 | 前端 | P1 | MacroDashboard.vue (状态卡片 + 趋势图) |
+| 45 | 宏观配置页面 | 前端 | P1 | MacroConfigs.vue (配置管理 + JSON编辑器) |
+| 46 | 宏观数据页面 | 前端 | P1 | MacroData.vue (筛选 + 表格 + 图表 + CSV导出) |
+| 47 | 前端路由/菜单 | 前端 | P1 | 独立一级菜单"宏观数据" |
+| 48 | 测试用例 | 测试 | P0 | 单元测试 + 集成测试 >= 80% 覆盖率 |
+
+**数据源覆盖**（5个美联储官方数据源）:
+
+| 数据源 | 代码 | 类型 | 频率 | 解析引擎 |
+|--------|------|------|------|----------|
+| LW 模型 | r-star-LW | Excel | 季度 | openpyxl |
+| HLW 模型 | r-star-HLW | Excel | 季度 | openpyxl |
+| LM 模型 | r-star-LM | HTML | 季度 | beautifulsoup |
+| SEP 预测 | r-sep | HTML | 按会议 | beautifulsoup |
+| 长期中性利率 | longer-run-neutral | JSON | 年度 | jsonpath | |
+
 ### 5.3 模块依赖关系
 
 ```
@@ -309,7 +344,9 @@
 | DataSource | /datasource | admin | 数据源配置 |
 | Collection | /collection | admin | 采集任务管理（可视化cron） |
 | Users | /users | admin | 用户管理CRUD |
-| Logs | /logs | admin | 系统日志查看 |
+| MacroDashboard | /macro | admin | 宏观数据总览：数据源状态卡片 + ECharts r-star 趋势对比 |
+| MacroConfigs | /macro/configs | admin | 宏观数据源配置管理 |
+| MacroData | /macro/data | admin | 宏观数据查询：筛选 + 表格 + 图表 + CSV 导出 |
 
 ### 6.4 数据库交付
 

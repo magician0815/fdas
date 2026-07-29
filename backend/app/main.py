@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
     """
     from app.services.scheduler_service import scheduler_service
     from app.services.collection_service import collection_service
+    from app.services.macro_collection_service import macro_collection_service
 
     # Startup
     # 安全检查：验证SESSION_SECRET已配置
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
 
     scheduler_service.start()
     await collection_service.load_enabled_tasks()
+    await macro_collection_service.load_enabled_configs()
     logger.info("应用启动完成")
 
     yield
@@ -62,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="FDAS - 金融数据抓取与分析系统",
     description="基于FastAPI构建的金融数据采集与可视化API服务",
-    version="1.0.0",
+    version="2.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     lifespan=lifespan,
@@ -94,12 +96,13 @@ async def health_check():
     Returns:
         dict: 服务健康状态信息
     """
-    return {"status": "healthy", "version": "1.0.0"}
+    return {"status": "healthy", "version": "2.0.0"}
 
 
 # 注册API路由
 from app.api.v1 import auth, users, fx_data, datasources, datasource_wizard, collection_tasks, markets, forex_symbols, chart_settings, stocks
 from app.api.v1 import stock_symbols, stock_data, futures_varieties, futures_data, bond_symbols, bond_data
+from app.api.v1 import macro_configs, macro_data, macro_collection
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户管理"])
@@ -124,6 +127,10 @@ app.include_router(futures_data.router, prefix="/api/v1", tags=["期货行情数
 app.include_router(bond_symbols.router, prefix="/api/v1", tags=["债券标的"])
 # bond_data.router 已包含 prefix="/bond/data"
 app.include_router(bond_data.router, prefix="/api/v1", tags=["债券行情数据"])
+# 宏观数据采集模块 (V2.0)
+app.include_router(macro_configs.router, prefix="/api/v1", tags=["宏观数据源配置"])
+app.include_router(macro_data.router, prefix="/api/v1", tags=["宏观数据"])
+app.include_router(macro_collection.router, prefix="/api/v1", tags=["宏观采集"])
 
 # 诊断工具（后端自带，不受卷挂载影响）
 DIAG_DIR = Path("/app/static_diag")

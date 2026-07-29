@@ -572,10 +572,17 @@ backend/app/
 │   ├── collection_service.py
 │   ├── scheduler_service.py  # APScheduler管理
 │   ├── technical_service.py  # TA-Lib技术指标
-│   └── cache_service.py    # 缓存服务
+│   ├── cache_service.py    # 缓存服务
+│   ├── macro_config_service.py   # 宏观配置管理 (V2.0)
+│   └── macro_collection_service.py # 宏观采集编排 (V2.0)
 ├── collectors/             # 数据采集器
-│   ├── base.py             # 采集器基类
-│   └── akshare_collector.py  # AKShare采集器
+│   ├── base_collector.py   # 采集器基类
+│   ├── akshare_collector.py   # AKShare采集器
+│   ├── macro_base_collector.py # 宏观采集基类 (V2.0)
+│   ├── macro_nyfed_excel.py    # NY Fed Excel采集器
+│   ├── macro_richmond_html.py  # Richmond HTML采集器
+│   ├── macro_fomc_sep.py       # FOMC SEP采集器
+│   └── macro_feds_notes.py     # FEDS Notes采集器
 └── utils/                  # 工具函数
     ├── technical.py        # 技术指标计算
     └── helpers.py          # 辅助函数
