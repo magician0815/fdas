@@ -85,7 +85,9 @@ class MacroCalcService:
             {"sc": source_code, "pd": period_month}
         )
         row = result.fetchone()
-        return float(row[0]) if row else None
+        if row and row[0] is not None:
+            return float(row[0])
+        return None
 
     # ========== 计算辅助 ==========
 
@@ -208,7 +210,11 @@ class MacroCalcService:
         })
 
         # 8. 结果期间(取季度末)
-        periods = [pi_period, gdp["period_date"], r_lr_period]
+        def _to_date(v):
+            if isinstance(v, date): return v
+            try: return date.fromisoformat(str(v)[:10])
+            except: return date.today()
+        periods = [_to_date(pi_period), _to_date(gdp["period_date"]), _to_date(r_lr_period)]
         result_period = max(periods) if periods else date.today()
 
         # 9. 保存结果
