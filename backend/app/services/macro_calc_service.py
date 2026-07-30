@@ -104,10 +104,10 @@ class MacroCalcService:
 
     @staticmethod
     def _compute_output_gap(gdp: float, potential: float) -> float:
-        """产出缺口(%): (y_t - y_t_P) / y_t_P × 100."""
+        """产出缺口(比率): (y_t - y_t_P) / y_t_P."""
         if potential == 0:
             return 0.0
-        return round((gdp - potential) / potential * 100, 2)
+        return round((gdp - potential) / potential, 4)
 
     @staticmethod
     def _quarter_end(month: int, year: int = None) -> date:
@@ -184,13 +184,14 @@ class MacroCalcService:
         variables["Y_t"] = {"source": "real_gdp", "period": str(gdp["period_date"]), "value": y_val}
         variables["Y_P_t"] = {"source": "potential_gdp", "period": str(potential["period_date"]), "value": yp_val}
 
-        # 5. 产出缺口
+        # 5. 产出缺口 (比率, 在公式中 ×100% 等同于 ×1)
         output_gap = self._compute_output_gap(y_val, yp_val)
+        gap_pct = round(output_gap * 100, 2)
         steps.append({
             "step": 1,
             "description": "产出缺口",
-            "formula": f"({y_val} - {yp_val}) / {yp_val} × 100",
-            "result": output_gap
+            "formula": f"({y_val} - {yp_val}) / {yp_val} × 100%",
+            "result": f"{gap_pct}%"
         })
 
         # 6. 系数

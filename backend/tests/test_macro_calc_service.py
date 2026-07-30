@@ -13,12 +13,12 @@ class TestOutputGap:
     def test_positive_gap(self):
         """正缺口: GDP > 潜在."""
         result = MacroCalcService._compute_output_gap(23000, 22780)
-        assert result == 0.97  # ≈ (23000-22780)/22780*100
+        assert result == 0.0097  # (23000-22780)/22780
 
     def test_negative_gap(self):
         """负缺口: GDP < 潜在."""
         result = MacroCalcService._compute_output_gap(22000, 22780)
-        assert result == -3.42
+        assert result == -0.0342
 
     def test_zero_gap(self):
         """零缺口."""
@@ -29,9 +29,9 @@ class TestOutputGap:
         assert MacroCalcService._compute_output_gap(23000, 0) == 0.0
 
     def test_precision(self):
-        """精度: 保留两位小数."""
+        """精度: 保留四位小数."""
         result = MacroCalcService._compute_output_gap(24180.419, 23945.1378387)
-        assert result == 0.98
+        assert result == 0.0098
 
 
 class TestQuarterEnd:
@@ -119,7 +119,7 @@ class TestExecuteRule:
 
         result = await svc.execute_rule("BALANCED_APPROACH")
         assert result["success"] is True
-        assert result["result_value"] == 8.5  # ≈ 3.4+3.41+0.5*(3.41-2.0)+1.0*0.98
+        assert result["result_value"] == 7.52  # 3.4+3.41+0.5*(3.41-2.0)+1.0*(235/23945)
         assert "R_LR_t" in result["variable_snapshot"]
         assert result["variable_snapshot"]["R_LR_t"]["value"] == 3.4
 

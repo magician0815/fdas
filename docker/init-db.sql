@@ -1350,7 +1350,7 @@ VALUES (
     'BALANCED_APPROACH',
     '平衡方法规则 (Balanced-Approach Rule)',
     '基于泰勒规则框架，使用长期自然利率、核心PCE通胀率和产出缺口计算联邦基金利率建议值。通胀缺口权重0.5，产出缺口权重1.0。',
-    'FFR_t^{BA} = r_t^{LR} + \pi_t + 0.5(\pi_t - \pi^*) + 1.0 \times \left(\frac{y_t - y_t^P}{y_t^P} \times 100\right)',
+    'FFR_t^{BA} = r_t^{LR} + \pi_t + 0.5(\pi_t - \pi^*) + 1.0 \times \left(\frac{y_t - y_t^P}{y_t^P} \times 100\%\right)',
     '{"R_LR_t": {"label": "r_t^{LR}", "description": "长期自然利率", "sources": ["r-sep", "longer-run-neutral"], "priority": ["r-sep", "longer-run-neutral"], "current_binding": "r-sep"}, "PI_t": {"label": "\\pi_t", "description": "核心PCE同比通胀率(%)", "sources": ["core_pce"], "transform": "yoy_change", "frequency": "monthly"}, "PI_STAR": {"label": "\\pi^*", "description": "目标通胀率(%)", "type": "constant", "default_value": 2.0}, "Y_t": {"label": "y_t", "description": "实际GDP(十亿2017美元)", "sources": ["real_gdp"], "frequency": "quarterly"}, "Y_P_t": {"label": "y_t^P", "description": "潜在GDP(十亿2017美元)", "sources": ["potential_gdp"], "frequency": "quarterly"}}',
     '{"C_INFLATION": {"label": "C^{INFLATION}", "value": 0.5, "description": "通胀缺口系数"}, "C_OUTPUT": {"label": "C^{OUTPUT}", "value": 1.0, "description": "产出缺口系数"}}'
 ) ON CONFLICT (rule_code) DO NOTHING;
