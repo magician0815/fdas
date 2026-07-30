@@ -79,6 +79,12 @@ const routes = [
     component: () => import('@/views/MacroData.vue'),
     meta: { requiresAuth: true, requiresAdmin: true, title: '宏观数据查询' }
   },
+  {
+    path: '/macro/calc',
+    name: 'MacroCalc',
+    component: () => import('@/views/MacroCalc.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: '指标测算' }
+  },
 ]
 
 // 创建路由实例

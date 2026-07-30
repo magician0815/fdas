@@ -34,27 +34,24 @@
     </div>
 
     <!-- 数据表格 -->
-    <el-table :data="tableData" v-loading="loading" stripe class="data-table">
-      <el-table-column prop="source_code" label="数据源" width="180" />
-      <el-table-column prop="indicator_key" label="指标" width="160" />
+    <el-table :data="tableData" v-loading="loading" stripe class="data-table" style="width: 100%">
+      <el-table-column prop="indicator_key" label="指标" min-width="180" />
       <el-table-column prop="country" label="国家" width="80" />
-      <el-table-column prop="value" label="数值" width="120" align="right">
+      <el-table-column prop="value" label="数值" min-width="120" align="right">
         <template #default="{ row }">
           {{ row.value != null ? Number(row.value).toFixed(4) : '-' }}
         </template>
       </el-table-column>
-      <el-table-column label="发布日期" width="130">
-        <template #default="{ row }">
-          {{ row.publish_date || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="期间" width="130">
+      <el-table-column label="期间" min-width="120">
         <template #default="{ row }">
           {{ row.period_date || '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="frequency" label="频率" width="120" />
-      <el-table-column prop="series_name" label="系列名称" min-width="200" />
+      <el-table-column label="发布日期" min-width="120">
+        <template #default="{ row }">
+          {{ row.publish_date || '-' }}
+        </template>
+      </el-table-column>
     </el-table>
 
     <!-- 分页 -->
@@ -174,10 +171,9 @@ const exportCSV = () => {
     ElMessage.warning('无数据可导出')
     return
   }
-  const headers = ['数据源', '指标', '国家', '数值', '发布日期', '期间', '频率', '系列名称']
+  const headers = ['指标', '国家', '数值', '期间', '发布日期']
   const rows = tableData.value.map(r => [
-    r.source_code, r.indicator_key, r.country, r.value,
-    r.publish_date, r.period_date, r.frequency, r.series_name
+    r.indicator_key, r.country, r.value, r.period_date, r.publish_date
   ])
   const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v ?? ''}"`).join(','))].join('\n')
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
@@ -233,6 +229,7 @@ onBeforeUnmount(() => {
 .data-table {
   background: var(--fdas-card-bg);
   border-radius: 12px;
+  border: 1px solid var(--fdas-border);
   overflow: hidden;
 }
 

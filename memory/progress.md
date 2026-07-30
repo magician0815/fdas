@@ -44,8 +44,14 @@
 - [ ] 编写测试用例 (单元测试 + 集成测试)
 - [ ] 实际数据源 URL 验证和 parse_config 调优
 
-**版本**: V2.0.1
-**状态**: ✅ 全部完成 — 8 个数据源 / 2,391 条美国宏观数据 / 测试 26 passed
+**版本**: V2.1.0
+**状态**: ✅ 全部完成 — 8 指标 + 测算引擎 / 2,391 条数据 / FFR_BA=8.5%
+
+### 第三批新增: 指标测算引擎
+- 平衡方法规则 (Balanced-Approach Rule): FFR_BA = r_LR + π + 0.5(π - 2.0) + 1.0 × OutputGap
+- 2 张新表: macro_calculation_rules + macro_calculation_results
+- 前端: MacroCalc.vue (KaTeX公式渲染 + 计算详情)
+- 变量映射: r-sep → core_pce(YoY) → real_gdp → potential_gdp
 
 ### 数据统计 (第二批新增3个指标)
 

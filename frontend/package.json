@@ -15,6 +15,7 @@
     "axios": "^1.6.0",
     "echarts": "^5.5.0",
     "element-plus": "^2.5.0",
+    "katex": "^0.18.1",
     "klinecharts": "^10.0.0",
     "mathjs": "^15.2.0",
     "pinia": "^2.1.0",

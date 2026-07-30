@@ -71,3 +71,30 @@ export function getLatest(sourceCode) {
 export function queryLogs(params = {}) {
   return request.get('/api/v1/macro/logs', { params })
 }
+
+// ========== 指标测算 ==========
+
+/** 获取规则列表 */
+export function listCalcRules() {
+  return request.get('/api/v1/macro/calc/rules')
+}
+
+/** 获取规则详情 */
+export function getCalcRule(ruleCode) {
+  return request.get(`/api/v1/macro/calc/rules/${ruleCode}`)
+}
+
+/** 更新规则配置 */
+export function updateCalcRuleConfig(ruleCode, data) {
+  return request.put(`/api/v1/macro/calc/rules/${ruleCode}/config`, data)
+}
+
+/** 执行测算 */
+export function executeCalc(ruleCode) {
+  return request.post(`/api/v1/macro/calc/execute/${ruleCode}`)
+}
+
+/** 查询测算历史 */
+export function queryCalcResults(params = {}) {
+  return request.get('/api/v1/macro/calc/results', { params })
+}

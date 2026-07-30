@@ -102,7 +102,7 @@ async def health_check():
 # 注册API路由
 from app.api.v1 import auth, users, fx_data, datasources, datasource_wizard, collection_tasks, markets, forex_symbols, chart_settings, stocks
 from app.api.v1 import stock_symbols, stock_data, futures_varieties, futures_data, bond_symbols, bond_data
-from app.api.v1 import macro_configs, macro_data, macro_collection
+from app.api.v1 import macro_configs, macro_data, macro_collection, macro_calcs
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["用户管理"])
@@ -131,6 +131,7 @@ app.include_router(bond_data.router, prefix="/api/v1", tags=["债券行情数据
 app.include_router(macro_configs.router, prefix="/api/v1", tags=["宏观数据源配置"])
 app.include_router(macro_data.router, prefix="/api/v1", tags=["宏观数据"])
 app.include_router(macro_collection.router, prefix="/api/v1", tags=["宏观采集"])
+app.include_router(macro_calcs.router, prefix="/api/v1", tags=["指标测算"])
 
 # 诊断工具（后端自带，不受卷挂载影响）
 DIAG_DIR = Path("/app/static_diag")

@@ -94,6 +94,10 @@
           <el-icon><Search /></el-icon>
           <template #title>数据查询</template>
         </el-menu-item>
+        <el-menu-item index="/macro/calc">
+          <el-icon><Operation /></el-icon>
+          <template #title>指标测算</template>
+        </el-menu-item>
       </el-sub-menu>
 
       <el-menu-item index="/macro" v-if="isAdmin && collapsed">
@@ -128,7 +132,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { Connection, Timer, User, Document, Expand, Fold, Setting, DataAnalysis, TrendCharts, DataBoard, Search } from '@element-plus/icons-vue'
+import { Connection, Timer, User, Document, Expand, Fold, Setting, DataAnalysis, TrendCharts, DataBoard, Search, Operation } from '@element-plus/icons-vue'
 
 // Props
 defineProps({

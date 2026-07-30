@@ -29,6 +29,8 @@ from app.models.bond_daily import BondDaily
 from app.models.macro_config import MacroDataSourceConfig
 from app.models.macro_data import MacroDataPoint
 from app.models.macro_log import MacroCollectionLog
+from app.models.macro_calc_rule import MacroCalculationRule
+from app.models.macro_calc_result import MacroCalculationResult
 
 __all__ = [
     "Base",
@@ -52,4 +54,6 @@ __all__ = [
     "MacroDataSourceConfig",
     "MacroDataPoint",
     "MacroCollectionLog",
+    "MacroCalculationRule",
+    "MacroCalculationResult",
 ]

@@ -4,15 +4,20 @@ FRED CSV 宏观数据采集器.
 通过 FRED (Federal Reserve Economic Data) CSV 端点获取经济指标数据。
 通用设计, 通过 parse_config 配置不同的指标 (real_gdp / potential_gdp 等).
 
+注意: Docker 容器内 urllib3/httpx 与 FRED 服务器存在 SSL 兼容性问题导致 read timeout,
+改用 Python stdlib urllib.request (已验证可用).
+
 Author: FDAS Team
 Created: 2026-07-29
+Updated: 2026-07-29 - 改用 urllib.request 替代 httpx (Docker 兼容性)
 """
 
+import asyncio
 import logging
+import ssl
+import urllib.request
 from io import StringIO
-from typing import Any, Dict, List
 
-import httpx
 import pandas as pd
 
 from app.collectors.macro_base_collector import MacroBaseCollector
@@ -35,16 +40,19 @@ class MacroFREDCSVCollector(MacroBaseCollector):
     """
 
     async def _fetch_raw(self) -> bytes:
-        """重写: 直接通过 FRED CSV 端点获取."""
+        """使用 stdlib urllib (在 Docker 中兼容 FRED SSL)."""
         url_template = self.parse_config.get("url_template",
             "https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}")
         sid = self.parse_config.get("sid", "")
         url = url_template.replace("{sid}", sid)
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.get(url, headers=self.headers)
-            resp.raise_for_status()
-            return resp.content
+        def _download():
+            ctx = ssl.create_default_context()
+            req = urllib.request.Request(url, headers=self.headers or {})
+            with urllib.request.urlopen(req, timeout=self.timeout, context=ctx) as resp:
+                return resp.read()
+
+        return await asyncio.to_thread(_download)
 
     async def parse_raw(self, raw_data: bytes) -> pd.DataFrame:
         indicator_key = self.parse_config.get("indicator_key", self.source_code)

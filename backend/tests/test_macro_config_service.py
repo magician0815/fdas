@@ -58,6 +58,7 @@ class TestConfigService:
         assert collector is None
 
     def test_collector_class_map_coverage(self):
-        """确保5个数据源代码都有对应的采集器."""
-        expected = {"r-star-LW", "r-star-HLW", "r-star-LM", "r-sep", "longer-run-neutral"}
+        """确保所有数据源代码都有对应的采集器."""
+        expected = {"r-star-LW", "r-star-HLW", "r-star-LM", "r-sep", "longer-run-neutral",
+                    "real_gdp", "potential_gdp", "core_pce"}
         assert expected == set(COLLECTOR_CLASS_MAP.keys())

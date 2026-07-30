@@ -1291,4 +1291,66 @@ VALUES
  '0 9 10-15 * *',
  '{"User-Agent": "Mozilla/5.0 (compatible; FDAS/2.0)"}')
 
-ON CONFLICT (source_code) DO NOTHING;
+ON CONFLICT (source_code) DO NOTHING;-- 测算规则定义表
+CREATE TABLE IF NOT EXISTS macro_calculation_rules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    rule_code VARCHAR(50) NOT NULL UNIQUE,
+    rule_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    formula_latex TEXT NOT NULL,
+    variables_config JSONB NOT NULL DEFAULT '{}',
+    constants_config JSONB NOT NULL DEFAULT '{}',
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE macro_calculation_rules IS '测算规则定义表';
+COMMENT ON COLUMN macro_calculation_rules.id IS '规则唯一标识ID';
+COMMENT ON COLUMN macro_calculation_rules.rule_code IS '规则编码(BALANCED_APPROACH等)';
+COMMENT ON COLUMN macro_calculation_rules.rule_name IS '规则名称';
+COMMENT ON COLUMN macro_calculation_rules.description IS '规则描述说明';
+COMMENT ON COLUMN macro_calculation_rules.formula_latex IS 'LaTeX格式公式';
+COMMENT ON COLUMN macro_calculation_rules.variables_config IS '变量定义及绑定配置';
+COMMENT ON COLUMN macro_calculation_rules.constants_config IS '常量及系数配置';
+COMMENT ON COLUMN macro_calculation_rules.is_active IS '是否启用';
+COMMENT ON COLUMN macro_calculation_rules.created_at IS '创建时间';
+COMMENT ON COLUMN macro_calculation_rules.updated_at IS '更新时间';
+
+-- 测算结果表
+CREATE TABLE IF NOT EXISTS macro_calculation_results (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    rule_id UUID NOT NULL REFERENCES macro_calculation_rules(id) ON DELETE CASCADE,
+    rule_code VARCHAR(50) NOT NULL,
+    result_value NUMERIC(10,4),
+    result_period DATE,
+    variable_snapshot JSONB NOT NULL DEFAULT '{}',
+    calculation_process JSONB NOT NULL DEFAULT '{}',
+    rule_snapshot JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE macro_calculation_results IS '测算结果表';
+COMMENT ON COLUMN macro_calculation_results.id IS '结果唯一标识ID';
+COMMENT ON COLUMN macro_calculation_results.rule_id IS '关联规则ID';
+COMMENT ON COLUMN macro_calculation_results.rule_code IS '规则编码';
+COMMENT ON COLUMN macro_calculation_results.result_value IS '计算结果值';
+COMMENT ON COLUMN macro_calculation_results.result_period IS '结果所属期间';
+COMMENT ON COLUMN macro_calculation_results.variable_snapshot IS '变量取值快照(JSON)';
+COMMENT ON COLUMN macro_calculation_results.calculation_process IS '计算步骤详情(JSON)';
+COMMENT ON COLUMN macro_calculation_results.rule_snapshot IS '规则配置快照(JSON)';
+COMMENT ON COLUMN macro_calculation_results.created_at IS '计算时间';
+
+CREATE INDEX IF NOT EXISTS idx_calc_results_rule_code ON macro_calculation_results(rule_code);
+CREATE INDEX IF NOT EXISTS idx_calc_results_created ON macro_calculation_results(created_at DESC);
+
+-- 种子数据: 平衡方法规则
+INSERT INTO macro_calculation_rules (rule_code, rule_name, description, formula_latex, variables_config, constants_config)
+VALUES (
+    'BALANCED_APPROACH',
+    '平衡方法规则 (Balanced-Approach Rule)',
+    '基于泰勒规则框架，使用长期自然利率、核心PCE通胀率和产出缺口计算联邦基金利率建议值。通胀缺口权重0.5，产出缺口权重1.0。',
+    'FFR_t^{BA} = r_t^{LR} + \pi_t + 0.5(\pi_t - \pi^*) + 1.0 \times \left(\frac{y_t - y_t^P}{y_t^P} \times 100\right)',
+    '{"R_LR_t": {"label": "r_t^{LR}", "description": "长期自然利率", "sources": ["r-sep", "longer-run-neutral"], "priority": ["r-sep", "longer-run-neutral"], "current_binding": "r-sep"}, "PI_t": {"label": "\\pi_t", "description": "核心PCE同比通胀率(%)", "sources": ["core_pce"], "transform": "yoy_change", "frequency": "monthly"}, "PI_STAR": {"label": "\\pi^*", "description": "目标通胀率(%)", "type": "constant", "default_value": 2.0}, "Y_t": {"label": "y_t", "description": "实际GDP(十亿2017美元)", "sources": ["real_gdp"], "frequency": "quarterly"}, "Y_P_t": {"label": "y_t^P", "description": "潜在GDP(十亿2017美元)", "sources": ["potential_gdp"], "frequency": "quarterly"}}',
+    '{"C_INFLATION": {"label": "C^{INFLATION}", "value": 0.5, "description": "通胀缺口系数"}, "C_OUTPUT": {"label": "C^{OUTPUT}", "value": 1.0, "description": "产出缺口系数"}}'
+) ON CONFLICT (rule_code) DO NOTHING;
